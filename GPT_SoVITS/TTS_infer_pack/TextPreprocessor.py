@@ -20,7 +20,7 @@ from tools.i18n.i18n import I18nAuto, scan_language_list
 language=os.environ.get("language","Auto")
 language=sys.argv[-1] if sys.argv[-1] in scan_language_list() else language
 i18n = I18nAuto(language=language)
-punctuation = set(['!', '?', '…', ',', '.', '-'," "])
+punctuation = set(['!', '?', '…', ',', '.', '-'," ","，","。","？","！","~",":","：","—"])
 
 def get_first(text:str) -> str:
     pattern = "[" + "".join(re.escape(sep) for sep in splits) + "]"
@@ -111,7 +111,27 @@ class TextPreprocessor:
             
         print(i18n("实际输入的目标文本(切句后):"))
         print(texts)
+        
         return texts
+    
+    def pre_seg_text_v2(self, text:str, lang:str, text_split_method:str):
+        seg_method = get_seg_method(text_split_method)
+        text = seg_method(text)
+        print("切分前的文本:",text)
+        # 将符号拼接到前一个词后面
+        text_list = text.split("\n")
+        print("text_list:",text_list)
+        result = []
+        for words in text_list:
+            if words in punctuation:
+                if len(result) == 0:
+                    continue
+                result[-1] += words
+            else:
+                result.append(words)
+            
+        print("切分后的文本:",result)
+        return result
     
     def segment_and_extract_feature_for_text(self, text:str, language:str, version:str="v1")->Tuple[list, torch.Tensor, str]:
         return self.get_phones_and_bert(text, language, version)

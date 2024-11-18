@@ -1,0 +1,3 @@
+[submodule "llm_server/Swaph"]
+	path = llm_server/Swaph
+	url = https://github.com/teatimekon/Swaph

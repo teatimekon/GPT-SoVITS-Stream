@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>音频流播放器</title>
+    <style>
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 10px;
+        }
+        #audioStatus {
+            margin-top: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>实时音频流播放器</h2>
+        <audio id="audioPlayer" controls></audio>
+        <div id="audioStatus">等待播放...</div>
+    </div>
+
+    <script>
+        const audioPlayer = document.getElementById('audioPlayer');
+        const statusDiv = document.getElementById('audioStatus');
+
+        // 设置音频源
+        audioPlayer.src = '/stream_audio';
+        
+        // 监听播放状态
+        audioPlayer.addEventListener('playing', () => {
+            statusDiv.textContent = '正在播放...';
+        });
+
+        audioPlayer.addEventListener('pause', () => {
+            statusDiv.textContent = '播放暂停';
+        });
+
+        audioPlayer.addEventListener('ended', () => {
+            statusDiv.textContent = '播放结束';
+        });
+
+        audioPlayer.addEventListener('error', (e) => {
+            statusDiv.textContent = '播放出错: ' + e.target.error.message;
+            console.error('Audio error:', e);
+        });
+    </script>
+</body>
+</html> 

@@ -102,6 +102,7 @@
     "开启SSL提取": "Start SSL extracting",
     "开启SoVITS训练": "Start SoVITS training",
     "开启TTS推理WebUI": "Open TTS Inference WebUI",
+    "测试TTS推理WebUI": "Debug TTS Inference WebUI",
     "开启UVR5-WebUI": "Open UVR5-WebUI",
     "开启一键三连": "Start one-click formatting",
     "开启打标WebUI": "Open Labeling WebUI",

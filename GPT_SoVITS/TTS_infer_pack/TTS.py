@@ -788,7 +788,7 @@ class TTS:
                                 )
         else:
             print(i18n("############ 切分文本 ############"))
-            texts = self.text_preprocessor.pre_seg_text(text, text_lang, text_split_method)
+            texts = self.text_preprocessor.pre_seg_text_v2(text, text_lang, text_split_method)
             data = []
             for i in range(len(texts)):
                 if i%batch_size == 0:
@@ -828,7 +828,9 @@ class TTS:
             t_34 = 0.0
             t_45 = 0.0
             audio = []
+            print("data",data)
             for item in data:
+                print("处理当前的item",item)
                 t3 = ttime()
                 if return_fragment:
                     item = make_batch(item)
@@ -850,7 +852,7 @@ class TTS:
                 else:
                     prompt = self.prompt_cache["prompt_semantic"].expand(len(all_phoneme_ids), -1).to(self.configs.device)
 
-
+                infer_start_time = ttime()
                 pred_semantic_list, idx_list = self.t2s_model.model.infer_panel(
                     all_phoneme_ids,
                     all_phoneme_lens,
@@ -864,6 +866,8 @@ class TTS:
                     max_len=max_len,
                     repetition_penalty=repetition_penalty,
                 )
+                infer_end_time = ttime()
+                print(f"推理时间: {infer_end_time - infer_start_time:.2f}秒")
                 t4 = ttime()
                 t_34 += t4 - t3
 
@@ -913,6 +917,7 @@ class TTS:
                 t5 = ttime()
                 t_45 += t5 - t4
                 if return_fragment:
+                    #流式走这里
                     print("%.3f\t%.3f\t%.3f\t%.3f" % (t1 - t0, t2 - t1, t4 - t3, t5 - t4))
                     yield self.audio_postprocess([batch_audio_fragment], 
                                                     self.configs.sampling_rate, 

@@ -77,7 +77,8 @@ def cut0(inp):
     if not set(inp).issubset(punctuation):
         return inp
     else:
-        return "/n"
+        print("cut0,INP:",inp)
+        return inp
 
 
 # 凑四句一切
