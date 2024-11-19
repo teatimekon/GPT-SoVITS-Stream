@@ -31,7 +31,7 @@ def numpy_to_mp3(audio_array, sampling_rate):
     return mp3_bytes
 
 def process_audio_stream(question):
-    url = "http://localhost:5004/chat"
+    url = "http://localhost:5005/chat"
     data = {
         "question": question
     }

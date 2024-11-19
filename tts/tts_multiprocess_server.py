@@ -118,11 +118,14 @@ async def tts_process():
     data = request.json
     index = data.get('index')
     iter_start_time = time()
+    prompt_text = ""
+    with open("input_audio/input_text.txt", "r", encoding="utf-8") as file:
+        prompt_text = file.read()
     inputs = {
-        "text": data.get('text'),
+        "text": text,
         "index": data.get('index'),
-        "ref_wav_path": "input_audio/hutao_v2.wav",
-        "prompt_text": "啊呀呀？让我看看是谁来了，嗯…是旅行者跟派蒙！还有…",
+        "ref_wav_path": "input_audio/input_audio.wav",
+        "prompt_text": prompt_text,
     }
     # 提交任务
     future, req_index = worker_manager.process_request(inputs)

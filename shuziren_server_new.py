@@ -1,4 +1,4 @@
-from utils import get_llm_stream
+from utils import get_llm_stream, get_maxkb_stream
 import aiohttp
 import asyncio
 import json
@@ -161,7 +161,8 @@ async def process_question(question):
     result_queue = asyncio.Queue()
     
     async with aiohttp.ClientSession() as session:
-        text_stream = get_llm_stream(question, "1")
+        # text_stream = get_llm_stream(question, "1")
+        text_stream = get_maxkb_stream(question)
         pending_tasks = await process_text_stream(text_stream, session, result_queue)
         audio_manager, queue_task = await process_stream(result_queue, pending_tasks)
         
@@ -188,7 +189,7 @@ async def chat():
     # 创建处理任务但不等待其完成
     async def process_background():
         async with aiohttp.ClientSession() as session:
-            text_stream = get_llm_stream(question, "1")
+            text_stream = get_maxkb_stream(question)
             await process_text_stream(text_stream, session, result_queue)
             
             # 处理结果队列

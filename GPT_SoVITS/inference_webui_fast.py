@@ -148,6 +148,7 @@ def inference(text, text_lang,
         "parallel_infer": parallel_infer,
         "repetition_penalty": repetition_penalty,
     }
+    print("inference inputs",inputs)
     for item in tts_pipeline.run(inputs):
         yield item, actual_seed
         
@@ -233,7 +234,7 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
         with gr.Column():
             gr.Markdown(value=i18n("*请上传并填写参考信息"))
             with gr.Row():
-                inp_ref = gr.Audio(label=i18n("主参考音频(请上传3~10秒内参考音频，超过会报错！)"), type="filepath")
+                inp_ref = gr.Audio(label=i18n("主参考音频(请上传3~10秒内参考音频，超过会报错！)"),type="filepath")
                 inp_refs = gr.File(label=i18n("辅参考音频(可选多个，或不选)"),file_count="multiple")
             prompt_text = gr.Textbox(label=i18n("主参考音频的文本"), value="", lines=2)
             with gr.Row():
@@ -298,6 +299,7 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
                 repetition_penalty
              ],
             [output, seed],
+            concurrency_limit=8
         )
         stop_infer.click(tts_pipeline.stop, [], [])
         SoVITS_dropdown.change(change_sovits_weights, [SoVITS_dropdown,prompt_language,text_language], [prompt_language,text_language,prompt_text,prompt_language,text,text_language])
@@ -327,10 +329,16 @@ with gr.Blocks(title="GPT-SoVITS WebUI") as app:
         gr.Markdown(value=i18n("后续将支持转音素、手工修改音素、语音合成分步执行。"))
 
 if __name__ == '__main__':
+    args = sys.argv
+    if len(args) > 1:
+        infer_ttswebui = int(args[1])
+    else:
+        infer_ttswebui = 9872
     app.queue().launch(#concurrency_count=511, max_size=1022
         server_name="0.0.0.0",
-        inbrowser=True,
-        share=is_share,
+        share=False,
         server_port=infer_ttswebui,
         quiet=True,
+        show_api=True,
+        max_threads=10,
     )

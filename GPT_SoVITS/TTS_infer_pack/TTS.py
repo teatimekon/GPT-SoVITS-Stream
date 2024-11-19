@@ -91,14 +91,23 @@ class TTS_Config:
                 "cnhuhbert_base_path": "GPT_SoVITS/pretrained_models/chinese-hubert-base",
                 "bert_base_path": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
             },
+        # "default_v2":{
+        #         "device": "cpu",
+        #         "is_half": False,
+        #         "version": "v2",
+        #         "t2s_weights_path": "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
+        #         "vits_weights_path": "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth",
+        #         "cnhuhbert_base_path": "GPT_SoVITS/pretrained_models/chinese-hubert-base",
+        #         "bert_base_path": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+        #     },
         "default_v2":{
                 "device": "cpu",
                 "is_half": False,
                 "version": "v2",
-                "t2s_weights_path": "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
-                "vits_weights_path": "GPT_SoVITS/pretrained_models/gsv-v2final-pretrained/s2G2333k.pth",
-                "cnhuhbert_base_path": "GPT_SoVITS/pretrained_models/chinese-hubert-base",
-                "bert_base_path": "GPT_SoVITS/pretrained_models/chinese-roberta-wwm-ext-large",
+                "t2s_weights_path": "pretrained_models/gsv-v2final-pretrained/s1bert25hz-5kh-longer-epoch=12-step=369668.ckpt",
+                "vits_weights_path": "pretrained_models/gsv-v2final-pretrained/s2G2333k.pth",
+                "cnhuhbert_base_path": "pretrained_models/chinese-hubert-base",
+                "bert_base_path": "pretrained_models/chinese-roberta-wwm-ext-large",
             },
     }
     configs:dict = None
@@ -120,7 +129,7 @@ class TTS_Config:
     def __init__(self, configs: Union[dict, str]=None):
         
         # 设置默认配置文件路径
-        configs_base_path:str = "GPT_SoVITS/configs/"
+        configs_base_path:str = "configs/"
         os.makedirs(configs_base_path, exist_ok=True)
         self.configs_path:str = os.path.join(configs_base_path, "tts_infer.yaml")
         
@@ -147,6 +156,7 @@ class TTS_Config:
         self.device = self.configs.get("device", torch.device("cpu"))
         self.is_half = self.configs.get("is_half", False)
         self.version = version
+        print(self.configs)
         self.t2s_weights_path = self.configs.get("t2s_weights_path", None)
         self.vits_weights_path = self.configs.get("vits_weights_path", None)
         self.bert_base_path = self.configs.get("bert_base_path", None)
@@ -279,7 +289,6 @@ class TTS:
         self.init_bert_weights(self.configs.bert_base_path)
         self.init_cnhuhbert_weights(self.configs.cnhuhbert_base_path)
         # self.enable_half_precision(self.configs.is_half)
-        
         
         
     def init_cnhuhbert_weights(self, base_path: str):
@@ -730,6 +739,7 @@ class TTS:
 
         ###### setting reference audio and prompt text preprocessing ########
         t0 = ttime()
+        print("ref_audio_path",ref_audio_path)
         if (ref_audio_path is not None) and (ref_audio_path != self.prompt_cache["ref_audio_path"]):
             if not os.path.exists(ref_audio_path):
                 raise ValueError(f"{ref_audio_path} not exists")
@@ -828,9 +838,7 @@ class TTS:
             t_34 = 0.0
             t_45 = 0.0
             audio = []
-            print("data",data)
             for item in data:
-                print("处理当前的item",item)
                 t3 = ttime()
                 if return_fragment:
                     item = make_batch(item)

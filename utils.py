@@ -2,7 +2,7 @@ import requests
 import json
 import time
 import aiohttp
-
+import asyncio
 class Colors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -15,6 +15,7 @@ class Colors:
     UNDERLINE = '\033[4m'
     GREY = '\033[90m'
 
+PUNCTUATION_MARKS = frozenset(',;?!、，。？！；：…~')
 
 async def get_llm_stream(question: str, conv_id: str):
     url = "http://127.0.0.1:5001/stream"
@@ -40,7 +41,7 @@ async def get_llm_stream(question: str, conv_id: str):
 
 async def process_stream_response(response, start_time):
     """处理流式响应数据，按句子输出"""
-    PUNCTUATION_MARKS = frozenset(',;?!、，。？！；：…~:')
+    
     
     async def process_line(line: str) -> str:
         """处理单行数据"""
@@ -70,15 +71,14 @@ async def process_stream_response(response, start_time):
         2. 换行符：代表一小段话结尾，要处理成句子
         3. 其他字符串：代表一小段话未结束，要继续拼接
         """
-        print(f"{Colors.RED}{line}{Colors.ENDC}")
         content = await process_line(line.decode('utf-8'))
-        print("content",content,"len",len(content))
         for char in content:
-            if char != "\n" :
+            if char != "\n" and char not in PUNCTUATION_MARKS:
                 current_sentence.append(char)
-                
+
             # 当遇到标点符号时，输出完整句子
             if (char in PUNCTUATION_MARKS) or (char == "\n"):
+                current_sentence.append(" ")
                 complete_sentence = ''.join(current_sentence)
                 elapsed_time = time.time() - start_time
                 current_sentence = []  # 清空当前句子缓存
@@ -87,53 +87,13 @@ async def process_stream_response(response, start_time):
                     print("全是符号，跳过")
                     continue
                 if len(complete_sentence) > 0:
-                    print("complete_sentence:",complete_sentence,"len",len(complete_sentence))
+                    print(f"{Colors.RED}complete_sentence:{complete_sentence} len:{len(complete_sentence)}{Colors.ENDC}")
                     yield complete_sentence
     if current_sentence:
-        print("最后的句子",current_sentence)
         yield ''.join(current_sentence)
 
 
-def get_rag_stream(question: str):
-    application_id = "cef470c6-603b-11ef-87f1-26cf8447a8c9"
-    conversation_id = get_rag_conversation_id(application_id)
-    conversation_id = conversation_id.json()["data"]
-    message = send_chat_message(question, conversation_id, application_id)
-    
-    return message
-
-def get_rag_conversation_id(application_id):
-    url = f'http://0.0.0.0:8085/api/application/{application_id}/chat/open'
-    auth_token = "eyJ1c2VybmFtZSI6ImFkbWluIiwiaWQiOiJmMGRkOGY3MS1lNGVlLTExZWUtOGM4NC1hOGExNTk1ODAxYWIiLCJlbWFpbCI6IiIsInR5cGUiOiJVU0VSIn0:1t8xtC:JfOV5571AAnlSzlpnglNIv9XTcx2456TXJ9ITHL8UWA"
-    headers = {
-        'AUTHORIZATION': auth_token,
-        'Accept': 'application/json, text/plain, */*',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Connection': 'keep-alive',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'
-    }
-    return requests.get(url, headers=headers, verify=False)
-
-def send_chat_message(message, chat_uuid, application_id):
-    url = f'http://0.0.0.0:8085/api/application/chat_message/{chat_uuid}'
-    headers = {
-        'AUTHORIZATION': f"application-{application_id}",
-        'Accept': '*/*',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-        'Connection': 'keep-alive',
-        'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'
-    }
-
-    data = {
-        "message": message,
-        "re_chat": False,
-        "stream": False
-    }
-
-    return requests.post(url, headers=headers, json=data, verify=False)
-
-def call_maxkb_api(question: str):
+async def call_maxkb_api(question: str):
     api_key = "application-f9bd7e9a307f4cb9bd96cd90bcd0fd1c"
     base_url = "http://183.131.7.9:8003/api/application/cef470c6-603b-11ef-87f1-26cf8447a8c9/chat/completions"
     headers = {
@@ -150,18 +110,41 @@ def call_maxkb_api(question: str):
         ],
         "stream": True
     }
-    return requests.post(base_url, headers=headers, json=data,stream=True)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.post(base_url, headers=headers, json=data) as response:
+            async for line in response.content:
+                yield line.decode('utf-8')
+
+# 添加新的异步函数来处理输出
+async def get_maxkb_stream(question: str):
+    current_sentence = []
+    async for line in call_maxkb_api(question=question):
+        if line.startswith('data: '):
+            try:
+                json_data = json.loads(line[6:])
+                if 'choices' in json_data and json_data['choices']:
+                    delta = json_data['choices'][0].get('delta', {})
+                    content = delta.get('content', '')
+                    if content:
+                        for char in content:
+                            if char != "\n":
+                                current_sentence.append(char)
+                            if char in PUNCTUATION_MARKS:
+                                complete_sentence = ''.join(current_sentence)
+                                current_sentence = []
+                                yield complete_sentence
+                                print("complete_sentence:",complete_sentence,"len",len(complete_sentence))
+            except json.JSONDecodeError:
+                continue
+
 
 if __name__ == "__main__":
-    # ans = get_llm_stream("你好，我是胡桃，我是请求 1","1")
-    # for chunk in ans:
-    #     print(chunk, end='\n', flush=True)
-    # res = get_rag_stream(question="1")
-    # print(res)
-    # ans = call_maxkb_api(question="你好")
-    # for res in ans.iter_content(chunk_size=1024):
-    #     print(res)
-    from nltk.book import *
+    import asyncio
+    
+    # 运行异步函数
+    ans = get_maxkb_stream(question="如何配置 cname")
+    print(ans)
 
 
 
