@@ -30,10 +30,12 @@ def numpy_to_mp3(audio_array, sampling_rate):
 
     return mp3_bytes
 
-def process_audio_stream(question):
-    url = "http://localhost:5005/chat"
+def process_audio_stream(question, request_id):
+    
+    url = "http://localhost:5006/chat"
     data = {
-        "question": question
+        "question": question,
+        "request_id": request_id
     }
     
     try:
@@ -65,11 +67,27 @@ def process_audio_stream(question):
     except Exception as e:
         print(f"发生错误: {str(e)}")
         yield None
+def show_interrupt_button():
+    print("显示打断按钮")
+    return gr.update(visible=True)
 
+def hide_interrupt_button():
+    print("隐藏打断按钮")
+    return gr.update(visible=False)
+
+
+def kill_request(request_id):
+    url = "http://localhost:5006/kill"
+    data = {
+        "request_id": request_id
+    }
+    requests.get(url, params=data)
+    
 with gr.Blocks() as demo:
     with gr.Row():
         with gr.Column(): 
             msg = gr.Textbox(value="1", label="问题")
+            request_id = gr.Textbox(value="1", label="request_id")
         with gr.Column():
             # 设置streaming=True和autoplay=True
             audio_output = gr.Audio(
@@ -77,12 +95,25 @@ with gr.Blocks() as demo:
                 autoplay=True,
                 label="音频输出"
             )
-    
-    msg.submit(
+    btn = gr.Button("播放")
+    btn_interrupt = gr.Button("打断",visible=False)
+    btn.click(
         process_audio_stream, 
-        inputs=[msg], 
+        inputs=[msg, request_id], 
         outputs=[audio_output]
     )
-
+    btn.click(
+        show_interrupt_button,
+        outputs=[btn_interrupt]
+    )
+    
+    btn_interrupt.click(
+        kill_request,
+        inputs=[request_id],
+        outputs=[]
+    ).then(
+        hide_interrupt_button,
+        outputs=[btn_interrupt]
+    )
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7862, debug=True)
