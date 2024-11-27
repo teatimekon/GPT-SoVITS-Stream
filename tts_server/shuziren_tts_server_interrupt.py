@@ -16,13 +16,15 @@ import numpy as np
 import psutil
 import soundfile as sf
 import torch
-from quart import Quart, request, Response
+from quart import Quart, request, Response, send_file
+from quart_cors import cors
 
 # 本地模块导入
 from TTS_infer_pack.TTS import TTS, TTS_Config
 from utils import get_maxkb_stream, get_llm_stream, Colors
 
 app = Quart(__name__)
+app = cors(app, allow_origin="*")
 max_workers = 4
 future_map = defaultdict(set)
 task_control = Manager().dict()
@@ -61,42 +63,7 @@ def dummy_workers():
         future.result()
     print("所有进程已完成初始化")
 
-def worker(text: str,
-    ref_wav_path: str,
-    prompt_text: str = None,
-    top_k: int = 5,
-    top_p: float = 1.0,
-    temperature: float = 1.0,
-    speed_factor: float = 1.1,
-    ref_text_free: bool = False,
-    cut_method: str = "cut0",
-    index: int = None,
-    task_control_dict: dict = None):
-    print(f"运行任务 {index},request_id {request_id}")
-    pid = os.getpid()
-    if task_control_dict[request_id]:
-        print(f"Worker {pid} ，任务{request_id}_{index}在执行前被取消")
-        return f"cancelled_before_start_{request_id}_{index}"
-    # 设置信号处理器
-    def signal_handler(signum, frame):
-        print(f"Worker {pid} 收到信号 {signum}，准备取消任务")
-        raise TaskCancelledException("Task cancelled by signal")
-    
-    signal.signal(signal.SIGALRM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-    
-    try:
-        res = tts_run(text,ref_wav_path,prompt_text,top_k,top_p,temperature,speed_factor,ref_text_free,cut_method,index)
-    except TaskCancelledException:
-        print(f"Worker {pid} 任务被取消")
-        return f"cancelled_{request_id}_{index}"
-    except Exception as e:
-        print(f"Worker {pid} 任务执行失败 {e}")
-        raise
-
-    return res
 #滑动窗口
-#添加新的类来管理音频数据队列
 class AudioStreamManager:
     def __init__(self):
         self.audio_buffer = {}  # 存储音频数据的缓冲区
@@ -129,10 +96,10 @@ def tts_run(
     temperature: float = 1.0,
     speed_factor: float = 1.1,
     ref_text_free: bool = False,
-    cut_method: str = "cut0",
     index: int = None,
     task_control_dict: dict = None,
-    request_id: str = None
+    request_id: str = None,
+    text_split_method: str = "cut0"
 ):    
     
     inputs = {
@@ -141,7 +108,7 @@ def tts_run(
         "ref_audio_path": ref_wav_path,
         "prompt_text": "" if ref_text_free else (prompt_text or ""),
         "prompt_lang": "all_zh",
-        "text_split_method": cut_method,
+        "text_split_method": text_split_method,
         "top_k": top_k,
         "top_p": top_p,
         "temperature": temperature,
@@ -253,15 +220,41 @@ async def chat():
             elif audio_manager.is_completed:
                 print(f"{Colors.OKGREEN}所有任务完成_generate{Colors.ENDC}")
                 task_control.pop(request_id,None)
+                future_map.pop(request_id,None)
                 break
             await asyncio.sleep(0.01)
             
     return Response(generate(), mimetype='audio/wav')
+
+@app.route('/tts', methods=['POST'])
+async def tts():
+    data = await request.get_json()
+    text = data.get('text')
+    request_id = data.get('request_id')
+    task_control[request_id] = False    # 任务开始，打断设置为 false
+    future = executor.submit(
+        tts_run,
+        text,
+        input_audio_path,
+        input_text,
+        text_split_method="cut1",
+        index=request_id,
+        request_id=request_id,
+        task_control_dict=task_control
+    )
+    
+    output_path, idx, sr, audio_data = future.result()
+    # 返回相对路径，去掉前面的目录部分
+    relative_path = os.path.basename(output_path)
+    return f"stream_output_wav/{relative_path}"
+
+    
 @app.route('/test', methods=['GET'])
 async def test():
     print(f"我的 map长度{len(future_map)}")
     print(f"map内容{future_map}")
     return str(len(future_map))
+
 
 @app.route('/kill', methods=['GET'])
 async def kill():
@@ -283,7 +276,7 @@ async def kill():
     # 2. 设置 flag 让 call queue 中的任务不再执行
     task_control[request_id] = True
     
-    # 3. 中断子��程中 running 的所有任务，发送SIGINT信号
+    # 3. 中断子程中 running 的所有任务，发送SIGINT信号
     current_process = psutil.Process()
     children = current_process.children(recursive=True)
     for child in children:
@@ -299,10 +292,28 @@ async def kill():
     print(f"map长度{Colors.OKGREEN} {len(future_map)} {Colors.ENDC},耗时{end_time-start_time}")
     return str(len(future_map))
 
+def cleanup_audio_files():
+    """定期清理生成的音频文件"""
+    try:
+        output_dir = "stream_output_wav"
+        if os.path.exists(output_dir):
+            for file in os.listdir(output_dir):
+                if file.endswith('.wav'):
+                    file_path = os.path.join(output_dir, file)
+                    try:
+                        os.remove(file_path)
+                    except Exception as e:
+                        print(f"删除文件 {file_path} 失败: {e}")
+    except Exception as e:
+        print(f"清理音频文件时出错: {e}")
+
 def clean_up():
     print("清理资源...")
     
-    # 关闭进程池
+    # 清理音频文件
+    cleanup_audio_files()
+    
+    # 原有的清理代码...
     if 'executor' in globals():
         executor.shutdown(wait=False, cancel_futures=True)
     
@@ -337,11 +348,40 @@ def clean_up():
     # 清理全局资源
     multiprocessing.util._exit_function()
 
+@app.route('/audio/<path:filename>')
+async def serve_audio(filename):
+    """
+    提供音频文件的访问
+    filename: 音频文件的相对路径
+    """
+    try:
+        # 确保文件路径是安全的
+        if '..' in filename or filename.startswith('/'):
+            return 'Invalid file path', 400
+            
+        # 构建完整的文件路径
+        file_path = os.path.join(os.getcwd(), filename)
+        
+        if not os.path.exists(file_path):
+            return 'File not found', 404
+            
+        # 发送文件，并设置正确的MIME类型
+        return await send_file(
+            file_path,
+            mimetype='audio/wav'
+        )
+        
+    except Exception as e:
+        print(f"提供音频文件时出错: {e}")
+        return 'Internal server error', 500
 
 if __name__ == "__main__":
+    # 确保输出目录存在
+    os.makedirs("stream_output_wav", exist_ok=True)
+    
     dummy_workers()
     try:
-        app.run(host="0.0.0.0", port=5006, debug=False,use_reloader=False)
+        app.run(host="0.0.0.0", port=5006, debug=False, use_reloader=False)
     finally:
         clean_up()
         print("tts服务器已关闭")
