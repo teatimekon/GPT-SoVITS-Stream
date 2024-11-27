@@ -17,3 +17,4 @@ weight.json
 ffmpeg*
 ffprobe*
 *.wav
+frontend/node_modules
