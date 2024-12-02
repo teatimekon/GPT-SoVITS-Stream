@@ -1,4 +1,3 @@
-
 import os, sys
 
 from tqdm import tqdm
@@ -77,8 +76,8 @@ class TextPreprocessor:
         text = text.strip("\n")
         if len(text) == 0:
             return []
-        if (text[0] not in splits and len(get_first(text)) < 4): 
-            text = "。" + text if lang != "en" else "." + text
+        # if (text[0] not in splits and len(get_first(text)) < 4): 
+        #     text = "。" + text if lang != "en" else "." + text
         print(i18n("实际输入的目标文本:"))
         print(text)
         
@@ -204,7 +203,7 @@ class TextPreprocessor:
             norm_text = ''.join(norm_text_list)
 
         if not final and len(phones) < 6:
-            return self.get_phones_and_bert("." + text,language,version,final=True)
+            return self.get_phones_and_bert(text + "。", language, version, final=True)
 
         return phones, bert, norm_text
 

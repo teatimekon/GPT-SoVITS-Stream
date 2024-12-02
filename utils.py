@@ -43,7 +43,7 @@ async def process_stream_response(response, start_time):
     """处理流式响应数据，按句子输出"""
     
     
-    async def process_line(line: str) -> str:
+    async def process_stream_line(line: str) -> str:
         """处理单行数据"""
         if line == '\n':
             return "\n"
@@ -71,7 +71,7 @@ async def process_stream_response(response, start_time):
         2. 换行符：代表一小段话结尾，要处理成句子
         3. 其他字符串：代表一小段话未结束，要继续拼接
         """
-        content = await process_line(line.decode('utf-8'))
+        content = await process_stream_line(line.decode('utf-8'))
         for char in content:
             if char != "\n" and char not in PUNCTUATION_MARKS:
                 current_sentence.append(char)
@@ -86,11 +86,17 @@ async def process_stream_response(response, start_time):
                 if set(complete_sentence).issubset(PUNCTUATION_MARKS.union("\n").union(" ")):
                     print("全是符号，跳过")
                     continue
+                # 如果句子长度小于 3 个字，则跳过
+                if len(complete_sentence) < 3:
+                    current_sentence = complete_sentence
+                    print(f"{Colors.RED}句子长度小于 3 个字，继续拼接{Colors.ENDC}")
+                    continue
                 if len(complete_sentence) > 0:
                     print(f"{Colors.RED}complete_sentence:{complete_sentence} len:{len(complete_sentence)}{Colors.ENDC}")
                     yield complete_sentence
     if current_sentence:
         yield ''.join(current_sentence)
+
 
 
 async def call_maxkb_api(question: str):

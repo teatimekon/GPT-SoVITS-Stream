@@ -21,6 +21,7 @@ from quart_cors import cors
 
 # 本地模块导入
 from TTS_infer_pack.TTS import TTS, TTS_Config
+from TTS_infer_pack.text_segmentation_method import get_method
 from utils import get_maxkb_stream, get_llm_stream, Colors
 
 app = Quart(__name__)
@@ -231,23 +232,44 @@ async def tts():
     data = await request.get_json()
     text = data.get('text')
     request_id = data.get('request_id')
+    rank = data.get('rank')
+    index = request_id + "_" + str(rank)
     task_control[request_id] = False    # 任务开始，打断设置为 false
+
+    loop = asyncio.get_event_loop()
     future = executor.submit(
         tts_run,
         text,
         input_audio_path,
         input_text,
         text_split_method="cut1",
-        index=request_id,
+        index=index,
         request_id=request_id,
-        task_control_dict=task_control
+        task_control_dict=task_control,
     )
     
-    output_path, idx, sr, audio_data = future.result()
+    output_path, idx, sr, audio_data = await loop.run_in_executor(None, future.result)
     # 返回相对路径，去掉前面的目录部分
     relative_path = os.path.basename(output_path)
-    return f"stream_output_wav/{relative_path}"
+    res = {
+        "path": f"stream_output_wav/{relative_path}",
+        "index": idx
+    }
+    return res
 
+@app.route('/tts_by_content', methods=['POST'])
+async def tts_by_content():
+    data = await request.get_json()
+    text = data.get('text')
+    request_id = data.get('request_id')
+    
+    sentences = get_method("cut5")(text).strip("\n").split("\n")
+    for index,sentence in enumerate(sentences):
+        if not sentence.strip():  # 如果去掉空格后为空字符串，说明全是空字符
+            print(f"第{index}个句子 '{sentence}' 全是空字符")
+            continue
+
+        
     
 @app.route('/test', methods=['GET'])
 async def test():

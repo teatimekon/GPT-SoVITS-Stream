@@ -6,12 +6,11 @@
     <div v-else>
       <audio 
         ref="audioRef"
-        :src="audioSrc"
+        :src="currentAudio?.url"
         @ended="handleEnded"
         @pause="handlePause"
         @play="handlePlay"
         controls
-        loop
         controlsList="nodownload"
         class="audio-element"
       />
@@ -19,11 +18,15 @@
         <div class="time-info" v-if="duration">
           {{ formatTime(currentTime) }} / {{ formatTime(duration) }}
         </div>
-        <el-switch
-          v-model="isLooping"
-          active-text="循环播放"
-          @change="handleLoopChange"
-        />
+        <div class="playlist-controls">
+          <span class="playlist-info" v-if="playlist.length">
+            {{ currentIndex + 1 }}/{{ playlist.length }}
+          </span>
+          <el-switch
+            v-model="autoPlayNext"
+            active-text="自动播放下一个"
+          />
+        </div>
       </div>
     </div>
   </div>
@@ -33,49 +36,70 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps({
-  audioSrc: String,
-  loading: Boolean
+  playlist: {
+    type: Array,
+    default: () => []
+  },
+  loading: Boolean,
+  shouldPlayNext: {
+    type: Boolean,
+    default: true
+  }
 })
 
-const emit = defineEmits(['play', 'pause', 'ended'])
+const emit = defineEmits(['play', 'pause', 'ended', 'chunkStart', 'chunkEnd'])
 
+// 播放器状态
 const audioRef = ref(null)
-const isPlaying = ref(false)
+const currentIndex = ref(0)
 const currentTime = ref(0)
 const duration = ref(0)
-const isLooping = ref(true) // 默认开启循环播放
+const isPlaying = ref(false)
+const autoPlayNext = ref(true)
+const autoPlayEnabled = ref(true)
 
-const formatTime = (time) => {
-  const minutes = Math.floor(time / 60)
-  const seconds = Math.floor(time % 60)
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`
-}
+// 计算当前播放的音频
+const currentAudio = computed(() => props.playlist[currentIndex.value] || null)
 
-const handleLoopChange = (val) => {
-  if (audioRef.value) {
-    audioRef.value.loop = val
-  }
-}
-
-const togglePlay = async () => {
-  if (props.loading || !audioRef.value) return
+// 播放控制相关方法
+const playAudio = async () => {
+  if (!audioRef.value || !autoPlayEnabled.value) return
   
-  if (isPlaying.value) {
-    audioRef.value.pause()
-  } else {
-    emit('play')
-    if (props.audioSrc) {
-      await audioRef.value.play()
+  try {
+    await audioRef.value.play()
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('音频加载被打断，正在切换到新音频')
+    } else {
+      console.error('播放出错:', error)
     }
   }
 }
 
-const handleEnded = () => {
+const playNext = async () => {
+  if (!autoPlayEnabled.value) return
+  
+  while (!props.shouldPlayNext) {
+    await new Promise(r => setTimeout(r, 100))
+  }
+  currentIndex.value = (currentIndex.value + 1) % props.playlist.length
+  emit('chunkStart', {
+    index: currentIndex.value,
+    audio: currentAudio.value
+  })
+  await playAudio()
+}
+
+// 事件处理器
+const handleEnded = async () => {
   isPlaying.value = false
-  emit('ended')
-  // 如果开启了循环播放，自动重新开始
-  if (isLooping.value && audioRef.value) {
-    audioRef.value.play()
+  emit('chunkEnd', {
+    index: currentIndex.value,
+    audio: currentAudio.value
+  })
+  
+  if (autoPlayNext.value && autoPlayEnabled.value) {
+    await playNext()
   }
 }
 
@@ -89,7 +113,7 @@ const handlePlay = () => {
   emit('play')
 }
 
-// 监听音频时间更新
+// 时间更新处理
 const updateTime = () => {
   if (audioRef.value) {
     currentTime.value = audioRef.value.currentTime
@@ -97,26 +121,81 @@ const updateTime = () => {
   }
 }
 
-// 监听音频源变化
-watch(() => props.audioSrc, (newSrc) => {
-  if (newSrc && audioRef.value) {
+// 监听播放列表变化
+watch(() => props.playlist, (newPlaylist) => {
+  if (newPlaylist.length > 0) {
+    currentIndex.value = 0
+    if (autoPlayNext.value) {
+      audioRef.value?.load()
+      playAudio()
+    }
+  }
+}, { deep: true })
+
+// 监听当前音频变化
+watch(() => currentAudio.value, () => {
+  if (audioRef.value) {
     audioRef.value.load()
-    audioRef.value.play()
+    setTimeout(() => {
+      if (autoPlayNext.value) {
+        playAudio()
+      }
+    }, 100)
   }
 })
 
-// 组件挂载后设置事件监听
+// 生命周期钩子
 onMounted(() => {
-  if (audioRef.value) {
-    audioRef.value.addEventListener('timeupdate', updateTime)
-    audioRef.value.loop = isLooping.value // 设置初始循环状态
-  }
+  audioRef.value?.addEventListener('timeupdate', updateTime)
 })
 
-// 组件卸载前移除事件监听
 onUnmounted(() => {
-  if (audioRef.value) {
-    audioRef.value.removeEventListener('timeupdate', updateTime)
+  audioRef.value?.removeEventListener('timeupdate', updateTime)
+})
+
+// 工具函数
+const formatTime = (time) => {
+  if (!time) return '00:00'
+  const minutes = Math.floor(time / 60)
+  const seconds = Math.floor(time % 60)
+  return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+}
+
+// 暂停自动播放
+const pauseAutoPlay = () => {
+  autoPlayEnabled.value = false
+  // 确保当前播放也暂停
+  audioRef.value?.pause()
+}
+
+// 恢复自动播放
+const resumeAutoPlay = () => {
+  autoPlayEnabled.value = true
+  // 如果需要继续播放，可以在这里添加播放逻辑
+  if (autoPlayNext.value && !isPlaying.value) {
+    playAudio()
+  }
+}
+
+// 对外暴露的方法
+defineExpose({
+  playNext,
+  play: playAudio,
+  pause: () => audioRef.value?.pause(),
+  waitForCurrentChunk: () => {
+    return new Promise((resolve) => {
+      if (!audioRef.value || audioRef.value.ended || audioRef.value.paused) {
+        resolve()
+        return
+      }
+      
+      const onEnd = () => {
+        audioRef.value?.removeEventListener('ended', onEnd)
+        resolve()
+      }
+      
+      audioRef.value.addEventListener('ended', onEnd)
+    })
   }
 })
 </script>
@@ -124,14 +203,17 @@ onUnmounted(() => {
 <style scoped>
 .audio-player {
   min-width: 300px;
-  padding: 10px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
 .audio-element {
   width: 100%;
   height: 54px;
-  margin-bottom: 5px;
-  border-radius: 4px;
+  margin-bottom: 8px;
+  border-radius: 8px;
   outline: none;
 }
 
@@ -139,12 +221,17 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 5px;
+  margin-top: 8px;
+  padding: 0 8px;
 }
 
 .time-info {
   font-size: 12px;
-  color: #909399;
+  color: #606266;
+  font-family: 'Roboto Mono', monospace;
+  background: #f5f7fa;
+  padding: 4px 8px;
+  border-radius: 4px;
 }
 
 .loading-state {
@@ -152,47 +239,7 @@ onUnmounted(() => {
   justify-content: center;
   align-items: center;
   height: 54px;
-}
-
-/* 自定义音频控件样式 */
-.audio-element::-webkit-media-controls-panel {
-  background-color: #f5f7fa;
-  border-radius: 4px;
-}
-
-.audio-element::-webkit-media-controls-play-button {
-  background-color: #409EFF;
-  border-radius: 50%;
-}
-
-.audio-element::-webkit-media-controls-current-time-display,
-.audio-element::-webkit-media-controls-time-remaining-display {
-  color: #606266;
-  font-family: monospace;
-}
-
-.audio-element::-webkit-media-controls-timeline {
-  background-color: #e4e7ed;
-  border-radius: 2px;
-  height: 4px;
-}
-
-.audio-element::-webkit-media-controls-volume-slider {
-  background-color: #e4e7ed;
-  border-radius: 2px;
-  padding: 0 5px;
-}
-
-/* 移除多余的控件按钮 */
-.audio-element::-webkit-media-controls-enclosure {
-  border-radius: 4px;
-}
-
-.audio-element::-webkit-media-controls-mute-button {
-  display: none;
-}
-
-.audio-element::-webkit-media-controls-volume-slider {
-  display: none;
+  background: #f5f7fa;
+  border-radius: 8px;
 }
 </style> 
