@@ -34,7 +34,7 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../services/api'
 
-const audioElement = ref(null)
+
 const statusText = ref('')
 const requestId = ref('')
 const isLoading = ref(false)
@@ -59,6 +59,10 @@ const props = defineProps({
   checkCanPlay: {
     type: Function,
     default: async () => true
+  },
+  continuitySentences: {
+    type: Array,
+    default: () => []
   }
 })
 

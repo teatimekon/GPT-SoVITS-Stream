@@ -154,7 +154,7 @@ export const api = {
       const audioPath = response.data.path
       return {
         url: `${BASE_URL}/audio/${audioPath}`,
-        rank
+        content: text
       }
     } catch (error) {
       console.error('TTS请求失败:', error)

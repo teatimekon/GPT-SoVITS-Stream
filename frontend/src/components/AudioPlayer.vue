@@ -44,14 +44,22 @@ const props = defineProps({
   shouldPlayNext: {
     type: Boolean,
     default: true
+  },
+  modelValue: {
+    type: Number,
+    default: 0
   }
 })
 
-const emit = defineEmits(['play', 'pause', 'ended', 'chunkStart', 'chunkEnd'])
+const emit = defineEmits(['play', 'pause', 'ended', 'chunkStart', 'chunkEnd', 'update:modelValue'])
 
 // 播放器状态
 const audioRef = ref(null)
-const currentIndex = ref(0)
+const currentIndex = computed({
+  get: () => props.modelValue,
+  set: (val) => emit('update:modelValue', val)
+})
+const currentKey = ref('content')
 const currentTime = ref(0)
 const duration = ref(0)
 const isPlaying = ref(false)
@@ -59,7 +67,7 @@ const autoPlayNext = ref(true)
 const autoPlayEnabled = ref(true)
 
 // 计算当前播放的音频
-const currentAudio = computed(() => props.playlist[currentIndex.value] || null)
+const currentAudio = computed(() => props.playlist[currentIndex.value]?.[currentKey.value] || null)
 
 // 播放控制相关方法
 const playAudio = async () => {
@@ -78,11 +86,20 @@ const playAudio = async () => {
 
 const playNext = async () => {
   if (!autoPlayEnabled.value) return
-  
+  let haveStreamPlayed = false
+  console.log('shouldPlayNext', props.shouldPlayNext)
   while (!props.shouldPlayNext) {
     await new Promise(r => setTimeout(r, 100))
+    console.log('刚刚流式播放啦')
+    haveStreamPlayed = true
   }
-  currentIndex.value = (currentIndex.value + 1) % props.playlist.length
+  if (!haveStreamPlayed) {
+    currentKey.value = 'content'
+    currentIndex.value = (currentIndex.value + 1) % props.playlist.length
+  }
+  else {
+    currentKey.value = 'continuity_sentences'
+  }
   emit('chunkStart', {
     index: currentIndex.value,
     audio: currentAudio.value
@@ -140,7 +157,7 @@ watch(() => currentAudio.value, () => {
       if (autoPlayNext.value) {
         playAudio()
       }
-    }, 100)
+    }, 500)
   }
 })
 

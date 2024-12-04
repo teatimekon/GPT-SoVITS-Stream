@@ -26,14 +26,15 @@
             </div>
           </template>
           
-          <div class="content" v-if="generatedContent">
-            <div class="content-text">{{ generatedContent }}</div>
+          <div class="content" v-if="generatedContentText">
+            <div class="content-text">{{ generatedContentText }}</div>
             <div v-if="audioChunks.length" class="audio-section">
               <audio-player 
                 ref="audioPlayerRef"
                 :playlist="audioChunks"
                 :loading="isLoading"
                 :should-play-next="shouldPlayNext"
+                v-model="currentAudioIndex"
                 @play="handlePlay"
                 @pause="handlePause"
                 @chunkEnd="handleChunkEnd"
@@ -52,6 +53,7 @@
           </template>
           <streaming-audio 
             ref="streamingAudioRef" 
+            :continuity-sentences="audioChunksWithSentences"
             :checkCanPlay="checkCanPlay"
             @stream-start="handleStreamStart" 
             @stream-end="handleStreamEnd"
@@ -72,40 +74,61 @@ import AudioPlayer from './components/AudioPlayer.vue'
 import { api } from './services/api'
 
 const generatedContent = ref('')
+const generatedContentText = ref('')
+
 const audioChunks = ref([])
+const audioChunksWithSentences = ref([])
+
 const isPlaying = ref(false)
 const isLoading = ref(false)
-const currentRequestId = ref('')
+
+const currentContentRequestId = ref('')
+const currentContinuityRequestId = ref('')
 const audioPlayerRef = ref(null)
 const streamingAudioRef = ref(null)
 const shouldPlayNext = ref(true)
 const canStreamPlay = ref(false)
+const currentAudioIndex = ref(0)
 
-const handleContentGenerated = (content, chunks) => {
-  console.log('handleContentGenerated', content, chunks)
-  generatedContent.value = content
+const handleContentGenerated = (content) => {
+  generatedContentText.value = content.content.map(chunk => chunk.content).join('')
+  generatedContent.value = content.content
+  console.log('generatedContent', generatedContentText.value)
   audioChunks.value = []
 }
+
 
 const generateAudio = async () => {
   try {
     isLoading.value = true
-    currentRequestId.value = uuidv4()
+    currentContentRequestId.value = uuidv4()
     
-    const chunks = generatedContent.value
-      .split('\n\n')
-      .map((content, index) => ({
-        content,
-        rank: index + 1
-      }))
-    
-    const audioPromises = chunks.map(chunk => 
-      api.getTTS(chunk.content, currentRequestId.value, chunk.rank)
-    )
+    // 获取音频结果
+    const audioPromises = generatedContent.value.map(async chunk => {
+      // 获取主要内容的音频
+      const contentAudio = await api.getTTS(
+        chunk.content, 
+        currentContentRequestId.value + 'content', 
+        chunk.rank
+      )
+      
+      // 获取连续性话语的音频
+      const continuityAudio = await api.getTTS(
+        chunk.continuity_sentences,
+        currentContentRequestId.value + 'continuity',
+        chunk.rank
+      )
+
+      return {
+        content: contentAudio,
+        continuity_sentences: continuityAudio,
+        rank: chunk.rank
+      }
+    })
 
     const results = await Promise.all(audioPromises)
     audioChunks.value = results.sort((a, b) => a.rank - b.rank)
-    
+    console.log('audioChunks', audioChunks.value)
   } catch (error) {
     console.error('获取音频失败:', error)
     ElMessage.error('获取音频失败')
@@ -131,6 +154,7 @@ const handleStreamStart = () => {
 
 const handleStreamEnd = () => {
   console.log('流式处理结束,handleStreamEnd', audioPlayerRef.value)
+  
   canStreamPlay.value = false
   if (audioPlayerRef.value) {
     shouldPlayNext.value = true

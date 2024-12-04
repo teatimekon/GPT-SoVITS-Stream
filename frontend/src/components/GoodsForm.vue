@@ -125,13 +125,16 @@ const generateContent = async () => {
     // 将所有 content 按 rank 排序后拼接
     // 再用变量记住每个 chunk 和对应的 rank
     const chunks = response.contents
-    console.log(chunks)
+
     const content = chunks
       .sort((a, b) => a.rank - b.rank)
-      .map(item => item.content)
-      .join('\n\n')
-    
-    emit('content-generated', content)
+      .map(item => ({
+        content: item.content,
+        rank: item.rank,
+        continuity_sentences: item.continuity_sentences?.content || ''
+      }))
+
+    emit('content-generated', { content })
     ElMessage.success('生成成功')
   } catch (error) {
     console.error('生成内容失败:', error)
