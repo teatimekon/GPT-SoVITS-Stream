@@ -233,7 +233,11 @@ export const api = {
                 },
                 
             });
-            return response.data;
+            const videoPath = response.data.video_url
+
+            return {
+                url: `${Echominic_URL}/video/${videoPath}`,
+              }
         } catch (error) {
             console.error('生成视频失败:', error);
             throw error;

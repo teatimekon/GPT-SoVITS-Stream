@@ -77,7 +77,7 @@
       </el-form-item>
       <el-form-item label="SSML">
         <el-switch 
-          v-model="form.is_open_smml" 
+          v-model="form.is_ssml_open" 
           active-text="开"
           inactive-text="关"
         />
@@ -117,7 +117,7 @@ const form = ref({
   target_people: '25-45岁的年轻女性',
   user_point: '1.长时间走路脚会疼\n2.想要既舒适又时尚的鞋子\n3.担心鞋子容易磨损',
   style: 1,
-  is_open_smml: false,
+  is_ssml_open: false,
 })
 
 const generateContent = async () => {

@@ -223,13 +223,7 @@ const generateVideo = async () => {
     formData.append('device', 'cuda');
 
     const videoResponse = await api.generateVideo(formData);
-
-    console.log('API Response:', videoResponse); // 检查 API 响应
-    const videoBlob = new Blob([videoResponse], { type: 'video/mp4' });
-
-    const url = URL.createObjectURL(videoBlob);
-    console.log('videoUrl:', url);
-    videoUrl.value = url;
+    videoUrl.value = videoResponse.url;
 
   } catch (error) {
     console.error('生成视频失败:', error);
