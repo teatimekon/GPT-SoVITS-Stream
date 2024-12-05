@@ -3,64 +3,80 @@
     <el-header class="app-header">
       <h1>数字人直播</h1>
     </el-header>
-    
+
     <el-container class="main-container">
       <el-aside width="500px" class="fixed-aside">
-        <goods-form @content-generated="handleContentGenerated"/>
+        <goods-form @content-generated="handleContentGenerated" />
       </el-aside>
-      
+
       <el-main class="fixed-main">
         <el-card class="content-card">
           <template #header>
             <div class="card-header">
               <span>生成的口播文本</span>
-              <el-button 
-                v-if="generatedContent && !audioChunks.length"
-                type="primary"
-                @click="generateAudio"
-                :loading="isLoading"
-                class="generate-btn"
-              >
+              <el-button v-if="generatedContent && !audioChunks.length" type="primary" @click="generateAudio"
+                :loading="isLoading" class="generate-btn">
                 生成语音
               </el-button>
             </div>
           </template>
-          
+
           <div class="content" v-if="generatedContentText">
             <div class="content-text">{{ generatedContentText }}</div>
             <div v-if="audioChunks.length" class="audio-section">
-              <audio-player 
-                ref="audioPlayerRef"
-                :playlist="audioChunks"
-                :loading="isLoading"
-                :should-play-next="shouldPlayNext"
-                v-model="currentAudioIndex"
-                @play="handlePlay"
-                @pause="handlePause"
-                @chunkEnd="handleChunkEnd"
-                @chunkStart="handleChunkStart"
-              />
+              <audio-player ref="audioPlayerRef" :playlist="audioChunks" :loading="isLoading"
+                :should-play-next="shouldPlayNext" v-model="currentAudioIndex" @play="handlePlay" @pause="handlePause"
+                @chunkEnd="handleChunkEnd" @chunkStart="handleChunkStart" />
             </div>
           </div>
           <el-empty v-else description="暂无内容" />
         </el-card>
-        
+
         <el-card class="stream-card">
           <template #header>
             <div class="card-header">
               <span>实时音频流</span>
             </div>
           </template>
-          <streaming-audio 
-            ref="streamingAudioRef" 
-            :continuity-sentences="audioChunksWithSentences"
-            :checkCanPlay="checkCanPlay"
-            @stream-start="handleStreamStart" 
-            @stream-end="handleStreamEnd"
-          />
+          <streaming-audio ref="streamingAudioRef" :continuity-sentences="audioChunksWithSentences"
+            :checkCanPlay="checkCanPlay" @stream-start="handleStreamStart" @stream-end="handleStreamEnd" />
+        </el-card>
+
+        <el-card class="video-card">
+          <template #header>
+            <div class="card-header">
+              <span>生成视频</span>
+            </div>
+          </template>
+          <el-button type="primary" @click="generateVideo" :loading="isLoading" class="generate-btn">
+            生成视频
+          </el-button>
+          <video v-if="videoUrl" :src="videoUrl" controls></video>
         </el-card>
       </el-main>
     </el-container>
+
+    <!-- 上传图片部分 -->
+    <el-card class="upload-card">
+      <template #header>
+        <div class="card-header">
+          <span>上传图片</span>
+        </div>
+      </template>
+      <input type="file" @change="handleImageFileChange" accept=".jpg,.jpeg,.png">
+      <el-button type="primary" @click="uploadImageManually">上传图片</el-button>
+    </el-card>
+
+    <!-- 上传音频部分 -->
+    <el-card class="upload-card">
+      <template #header>
+        <div class="card-header">
+          <span>上传音频</span>
+        </div>
+      </template>
+      <input type="file" @change="handleAudioFileChange" accept=".mp3,.wav">
+      <el-button type="primary" @click="uploadAudioManually">上传音频</el-button>
+    </el-card>
   </el-container>
 </template>
 
@@ -89,7 +105,11 @@ const streamingAudioRef = ref(null)
 const shouldPlayNext = ref(true)
 const canStreamPlay = ref(false)
 const currentAudioIndex = ref(0)
-
+const videoUrl = ref('');
+const imageUrl = ref('');
+const audioUrl = ref('');
+const imageFile = ref(null);
+const audioFile = ref(null);
 const handleContentGenerated = (content) => {
   generatedContentText.value = content.content.map(chunk => chunk.content).join('')
   generatedContent.value = content.content
@@ -102,16 +122,16 @@ const generateAudio = async () => {
   try {
     isLoading.value = true
     currentContentRequestId.value = uuidv4()
-    
+
     // 获取音频结果
     const audioPromises = generatedContent.value.map(async chunk => {
       // 获取主要内容的音频
       const contentAudio = await api.getTTS(
-        chunk.content, 
-        currentContentRequestId.value + 'content', 
+        chunk.content,
+        currentContentRequestId.value + 'content',
         chunk.rank
       )
-      
+
       // 获取连续性话语的音频
       const continuityAudio = await api.getTTS(
         chunk.continuity_sentences,
@@ -154,7 +174,7 @@ const handleStreamStart = () => {
 
 const handleStreamEnd = () => {
   console.log('流式处理结束,handleStreamEnd', audioPlayerRef.value)
-  
+
   canStreamPlay.value = false
   if (audioPlayerRef.value) {
     shouldPlayNext.value = true
@@ -167,7 +187,6 @@ const handleChunkEnd = async ({ index, audio }) => {
 
   if (index === audioChunks.value.length - 1) {
     console.log('所有音频播放完成')
-    
   }
 }
 
@@ -181,6 +200,121 @@ const checkCanPlay = async () => {
   while (!canStreamPlay.value) {
     console.log('checkCanPlay waiting')
     await new Promise(r => setTimeout(r, 100))
+  }
+}
+const generateVideo = async () => {
+  try {
+    isLoading.value = true;
+    const formData = new FormData();
+    formData.append('uploaded_img', imageUrl.value);
+    formData.append('uploaded_audio', audioUrl.value);
+    formData.append('width', '512');
+    formData.append('height', '512');
+    formData.append('length', '1200');
+    formData.append('seed', '420');
+    formData.append('facemask_dilation_ratio', '0.1');
+    formData.append('facecrop_dilation_ratio', '0.5');
+    formData.append('context_frames', '12');
+    formData.append('context_overlap', '3');
+    formData.append('cfg', '2.5');
+    formData.append('steps', '30');
+    formData.append('sample_rate', '16000');
+    formData.append('fps', '24');
+    formData.append('device', 'cuda');
+
+    const videoResponse = await api.generateVideo(formData);
+
+    console.log('API Response:', videoResponse); // 检查 API 响应
+    const videoBlob = new Blob([videoResponse], { type: 'video/mp4' });
+
+    const url = URL.createObjectURL(videoBlob);
+    console.log('videoUrl:', url);
+    videoUrl.value = url;
+
+  } catch (error) {
+    console.error('生成视频失败:', error);
+    ElMessage.error('生成视频失败');
+  } finally {
+    isLoading.value = false;
+  }
+};
+// 处理图片上传成功
+const handleImageUploadSuccess = async (response) => {
+  imageUrl.value = response.image_path
+}
+
+// 验证图片上传
+const beforeImageUpload = (file) => {
+  const isImage = file.type === 'image/jpeg' || file.type === 'image/png'
+  if (!isImage) {
+    ElMessage.error('只能上传JPEG或PNG格式的图片文件!')
+  }
+  return isImage
+}
+
+// 手动上传图片
+const uploadImageManually = async () => {
+  if (!imageFile.value) {
+    ElMessage.error('请选择一个图片文件')
+    return
+  }
+
+  const formData = new FormData()
+  formData.append('image', imageFile.value)
+
+  try {
+    const response = await api.uploadImage(formData)
+    handleImageUploadSuccess(response)
+  } catch (error) {
+    ElMessage.error('上传图片失败')
+  }
+}
+
+// 处理音频上传成功
+const handleAudioUploadSuccess = (response) => {
+  audioUrl.value = response.audio_path
+}
+
+// 验证音频上传
+const beforeAudioUpload = (file) => {
+  const isAudio = file.type === 'audio/mpeg' || file.type === 'audio/wav'
+  if (!isAudio) {
+    ElMessage.error('只能上传MP3或WAV格式的音频文件!')
+  }
+  return isAudio
+}
+
+// 手动上传音频
+const uploadAudioManually = async () => {
+  if (!audioFile.value) {
+    ElMessage.error('请选择一个音频文件')
+    return
+  }
+
+  const formData = new FormData()
+  formData.append('audio', audioFile.value)
+
+  try {
+    const response = await api.uploadAudio(formData)
+    handleAudioUploadSuccess(response)
+  } catch (error) {
+    ElMessage.error('上传音频失败')
+  }
+}
+
+// 处理图片文件变化
+const handleImageFileChange = (event) => {
+  const file = event.target.files[0]
+  if (beforeImageUpload(file)) {
+    imageFile.value = file
+  }
+}
+
+// 处理音频文件变化
+const handleAudioFileChange = (event) => {
+  const file = event.target.files[0]
+  if (beforeAudioUpload(file)) {
+    audioFile.value = file
   }
 }
 </script>
@@ -198,7 +332,7 @@ const checkCanPlay = async () => {
   align-items: center;
   padding: 0 20px;
   height: 60px;
-  box-shadow: 0 2px 12px 0 rgba(0,0,0,0.1);
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
 }
 
 .app-header h1 {
@@ -224,7 +358,6 @@ const checkCanPlay = async () => {
   height: 100%;
   overflow-y: auto;
   padding: 24px;
-  display: flex;
   flex-direction: column;
   gap: 24px;
 }
@@ -282,7 +415,7 @@ const checkCanPlay = async () => {
 
 .generate-btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(64,158,255,0.2);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.2);
 }
 
 .el-main {
@@ -319,7 +452,7 @@ const checkCanPlay = async () => {
 
 :deep(.el-input__wrapper) {
   border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 :deep(.el-card) {
@@ -362,5 +495,11 @@ const checkCanPlay = async () => {
   padding: 4px 8px;
   border-radius: 4px;
   font-family: 'Roboto Mono', monospace;
+}
+
+.video-card video {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
 }
 </style>

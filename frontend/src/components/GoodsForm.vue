@@ -75,7 +75,13 @@
           </div>
         </el-radio-group>
       </el-form-item>
-      
+      <el-form-item label="SSML">
+        <el-switch 
+          v-model="form.is_open_smml" 
+          active-text="开"
+          inactive-text="关"
+        />
+      </el-form-item>
       <el-form-item class="submit-item">
         <el-button 
           type="primary" 
@@ -99,9 +105,9 @@ const emit = defineEmits(['content-generated'])
 
 const loading = ref(false)
 const styleOptions = [
-  '温柔亲切，富有感染力',
-  '活力四射，青春时尚',
-  '专业可靠，沉稳大气'
+  '正常风格',
+  '董宇辉',
+  '李佳琦'
 ]
 const form = ref({
   goods_name: '女士拖鞋舒适鞋日常步行',
@@ -110,7 +116,8 @@ const form = ref({
   benefit: '买二送一，直播间优惠价格',
   target_people: '25-45岁的年轻女性',
   user_point: '1.长时间走路脚会疼\n2.想要既舒适又时尚的鞋子\n3.担心鞋子容易磨损',
-  style: 1
+  style: 1,
+  is_open_smml: false,
 })
 
 const generateContent = async () => {
