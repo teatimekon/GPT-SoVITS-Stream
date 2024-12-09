@@ -100,8 +100,8 @@ async def process_stream_response(response, start_time):
 
 
 async def call_maxkb_api(question: str):
-    api_key = "application-f9bd7e9a307f4cb9bd96cd90bcd0fd1c"
-    base_url = "http://183.131.7.9:8003/api/application/cef470c6-603b-11ef-87f1-26cf8447a8c9/chat/completions"
+    api_key = "application-df40f7b453cb74ee46da8dc31cc385f7"
+    base_url = "http://183.131.7.9:8003/api/application/68b32f0e-64e2-11ef-977b-26cf8447a8c9/chat/completions"
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {api_key}",
@@ -140,17 +140,19 @@ async def get_maxkb_stream(question: str):
                                 complete_sentence = ''.join(current_sentence)
                                 current_sentence = []
                                 yield complete_sentence
-                                print("complete_sentence:",complete_sentence,"len",len(complete_sentence))
+                                
             except json.JSONDecodeError:
                 continue
 
 
 if __name__ == "__main__":
-    import asyncio
+    async def main():
+        async for line in get_maxkb_stream(question="我要退货"):
+            print(line)
     
     # 运行异步函数
-    ans = get_maxkb_stream(question="如何配置 cname")
-    print(ans)
+    asyncio.run(main())
+    
 
 
 

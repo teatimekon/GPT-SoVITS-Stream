@@ -177,7 +177,8 @@ async def chat():
     data = await request.get_json()
     question = data.get('question')
     request_id = data.get('request_id')
-    llm_stream = get_llm_stream(question,"1")
+    # llm_stream = get_llm_stream(question,"1")
+    llm_stream = get_maxkb_stream(question=question)
     index = 1
     audio_manager = AudioStreamManager()
     stream_completed = False
@@ -222,8 +223,7 @@ async def chat():
         index += 1
     
     stream_completed = True
-    
-    
+
     # 生成音频数据流
     async def generate():
         while True:
@@ -270,18 +270,6 @@ async def tts():
     }
     return res
 
-@app.route('/tts_by_content', methods=['POST'])
-async def tts_by_content():
-    data = await request.get_json()
-    text = data.get('text')
-    request_id = data.get('request_id')
-    
-    sentences = get_method("cut5")(text).strip("\n").split("\n")
-    for index,sentence in enumerate(sentences):
-        if not sentence.strip():  # 如果去掉空格后为空字符串，说明全是空字符
-            print(f"第{index}个句子 '{sentence}' 全是空字符")
-            continue
-
         
     
 @app.route('/test', methods=['GET'])
@@ -327,20 +315,34 @@ async def kill():
     print(f"map长度{Colors.OKGREEN} {len(future_map)} {Colors.ENDC},耗时{end_time-start_time}")
     return str(len(future_map))
 
-def cleanup_audio_files():
-    """定期清理生成的音频文件"""
+@app.route('/audio/<path:filename>')
+async def serve_audio(filename):
+    """
+    提供音频文件的访问
+    filename: 音频文件的相对路径
+    """
     try:
-        output_dir = "stream_output_wav"
-        if os.path.exists(output_dir):
-            for file in os.listdir(output_dir):
-                if file.endswith('.wav'):
-                    file_path = os.path.join(output_dir, file)
-                    try:
-                        os.remove(file_path)
-                    except Exception as e:
-                        print(f"删除文件 {file_path} 失败: {e}")
+        # 确保文件路径是安全的
+        if '..' in filename or filename.startswith('/'):
+            return 'Invalid file path', 400
+            
+        # 构建完整的文件路径
+        file_path = os.path.join(os.getcwd(), filename)
+        
+        if not os.path.exists(file_path):
+            return 'File not found', 404
+            
+        # 发送文件，并设置正确的MIME类型
+        return await send_file(
+            file_path,
+            mimetype='audio/wav'
+        )
+        
     except Exception as e:
-        print(f"清理音频文件时出错: {e}")
+        print(f"提供音频文件时出错: {e}")
+        return 'Internal server error', 500
+
+
 
 def clean_up():
     print("清理资源...")
@@ -383,32 +385,20 @@ def clean_up():
     # 清理全局资源
     multiprocessing.util._exit_function()
 
-@app.route('/audio/<path:filename>')
-async def serve_audio(filename):
-    """
-    提供音频文件的访问
-    filename: 音频文件的相对路径
-    """
+def cleanup_audio_files():
+    """定期清理生成的音频文件"""
     try:
-        # 确保文件路径是安全的
-        if '..' in filename or filename.startswith('/'):
-            return 'Invalid file path', 400
-            
-        # 构建完整的文件路径
-        file_path = os.path.join(os.getcwd(), filename)
-        
-        if not os.path.exists(file_path):
-            return 'File not found', 404
-            
-        # 发送文件，并设置正确的MIME类型
-        return await send_file(
-            file_path,
-            mimetype='audio/wav'
-        )
-        
+        output_dir = "stream_output_wav"
+        if os.path.exists(output_dir):
+            for file in os.listdir(output_dir):
+                if file.endswith('.wav'):
+                    file_path = os.path.join(output_dir, file)
+                    try:
+                        os.remove(file_path)
+                    except Exception as e:
+                        print(f"删除文件 {file_path} 失败: {e}")
     except Exception as e:
-        print(f"提供音频文件时出错: {e}")
-        return 'Internal server error', 500
+        print(f"清理音频文件时出错: {e}")
 
 @app.route('/start_periodic_task', methods=['POST'])
 async def start_periodic_task():

@@ -12,4 +12,4 @@ nohup python -u shuziren_client.py > logs/shuziren_client.log 2>&1 &        #786
 
 nohup python -u llm_server/Swaph/app.py > logs/llm_server.log 2>&1 &    #5001
 
-nohup python -u tts_server/shuziren_tts_server_interrupt.py > logs/shuziren_server.log 2>&1 &    #5004
+nohup python -u tts_server/shuziren_tts_server_interrupt.py > logs/shuziren_server.log 2>&1 &    #5006
