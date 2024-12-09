@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE_URL = 'http://183.131.7.9:5006'
+const BASE_URL = 'http://183.131.7.9:5007'
 const Echominic_URL = 'http://183.131.7.9:5000'
 export const api = {
     async generateContent(formData) {
@@ -243,5 +243,37 @@ export const api = {
             throw error;
         }
     },
+
+    async  startPeriodicTask(formData) {
+        const response = await axios.post(`${BASE_URL}/start_periodic_task`,  formData,{
+           headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+        });
+    
+        return response.data;
+    },
+
+    async stopPeriodicTask(formData) {
+    
+        const response = await axios.post(`${BASE_URL}/stop_periodic_task`, formData, {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded', 
+            },
+        });
+    
+        return response.data;
+    },
+    
+    async getResultById(formData) {
+    
+        const response = await axios.post(`${BASE_URL}/get_result_by_id`, formData, {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded', 
+            },
+        });
+        return response.data;
+    }
+
 }
 

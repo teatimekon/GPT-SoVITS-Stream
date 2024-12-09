@@ -53,6 +53,59 @@
           </el-button>
           <video v-if="videoUrl" :src="videoUrl" controls></video>
         </el-card>
+
+        <el-card class="live-card">
+          <template #header>
+            <div class="card-header">
+              <span>直播控制</span>
+            </div>
+          </template>
+          <el-button type="success" @click="startLive" :disabled="jobId !== ''">开始获取弹幕</el-button>
+          <el-button type="danger" @click="stopLive" :disabled="jobId == ''">停止获取弹幕</el-button>
+        </el-card>
+
+        <el-card class="live-data-card">
+          <template #header>
+            <div class="card-header">
+              <span>直播数据</span>
+            </div>
+          </template>
+          <h4>回答</h4>
+          <p>{{ answers }}</p>
+
+          <h4>挑选弹幕</h4>
+          <p>{{ chooseComments }}</p>
+
+          <h4>所有弹幕</h4>
+          <p>{{ comments }}</p>
+
+          <h4>脚本id</h4>
+          <p>{{ jobId }}</p>
+        </el-card>
+        <el-card class="config-card">
+          <template #header>
+            <div class="card-header">
+              <span>直播配置</span>
+            </div>
+          </template>
+          <el-form label-width="100px">
+            <el-form-item label="商品信息">
+              <el-input v-model="goodsInfo"></el-input>
+            </el-form-item>
+            <el-form-item label="弹幕选择数量">
+              <el-input-number v-model="chooseNum" :min="1"></el-input-number>
+            </el-form-item>
+            <el-form-item label="脚本间隔 (秒)">
+              <el-input-number v-model="interval" :min="1"></el-input-number>
+            </el-form-item>
+            <el-form-item label="获取弹幕间隔 (毫秒)">
+              <el-input-number v-model="fetchDataInterval" :min="1000"></el-input-number>
+            </el-form-item>
+            <el-form-item label="直播房间id">
+              <el-input v-model="roomId"></el-input>
+            </el-form-item>
+          </el-form>
+        </el-card>
       </el-main>
     </el-container>
 
@@ -110,6 +163,19 @@ const imageUrl = ref('');
 const audioUrl = ref('');
 const imageFile = ref(null);
 const audioFile = ref(null);
+const jobId = ref('');
+const answers = ref('');
+const chooseComments = ref('');
+const comments = ref('');
+const goodsInfo = ref('女士拖鞋舒适鞋日常步行');
+const chooseNum = ref(1);
+const interval = ref(60);
+const fetchDataInterval = ref(60000); // 默认10秒
+const pgJobId = ref('');
+const roomId = ref('1752664819');
+let fetchLiveDataInterval = ref(null);
+
+
 const handleContentGenerated = (content) => {
   generatedContentText.value = content.content.map(chunk => chunk.content).join('')
   generatedContent.value = content.content
@@ -311,6 +377,62 @@ const handleAudioFileChange = (event) => {
     audioFile.value = file
   }
 }
+const fetchLiveData = async () => {
+  try {
+    const formData = new FormData();
+    formData.append('job_id', pgJobId.value);
+    const response = await api.getResultById(formData);
+
+    answers.value = response.answers;
+    chooseComments.value = response.choose_comments;
+    comments.value = response.comments;
+  } catch (error) {
+    console.error('获取直播数据失败:', error);
+  }
+};
+const startLive = async () => {
+  // isLoading.value = true;
+  if (!goodsInfo.value || !chooseNum.value || !interval.value) {
+    ElMessage.error('请填写所有配置项');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('goods_info', goodsInfo.value);
+  formData.append('choose_num', chooseNum.value);
+  formData.append('interval', interval.value);
+  formData.append('room_id',roomId.value)
+  const response = await api.startPeriodicTask(formData);
+  console.log('startPeriodicTask response', response);
+  jobId.value = response.job_id;
+  pgJobId.value = response.pg_job_id;
+  ElMessage.success('直播已开始');
+
+  // 清除之前的定时器
+  clearInterval(fetchLiveDataInterval.value);
+
+  // 设置新的定时器
+  fetchLiveDataInterval.value = setInterval(fetchLiveData, fetchDataInterval.value);
+};
+const stopLive = async () => {
+
+  // isLoading.value = false;
+  if (!jobId.value) {
+    ElMessage.error('没有正在运行的直播任务');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('job_id', jobId.value);
+  await api.stopPeriodicTask(formData);
+  clearInterval(fetchLiveDataInterval.value);
+  jobId.value = '';
+  pgJobId.value = '';
+  answers.value = '';
+  chooseComments.value = '';
+  comments.value = '';
+  roomId.value = '';
+  ElMessage.success('直播已停止');
+};
+
 </script>
 
 <style>

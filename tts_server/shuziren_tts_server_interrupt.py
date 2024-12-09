@@ -1,6 +1,8 @@
 # 标准库导入
 import asyncio
 import os
+import uuid
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import signal
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
@@ -22,13 +24,24 @@ from quart_cors import cors
 # 本地模块导入
 from TTS_infer_pack.TTS import TTS, TTS_Config
 from TTS_infer_pack.text_segmentation_method import get_method
+from tts_server.dao import DatabaseManager
+from tts_server.remote_http import RemoteHTTP
 from utils import get_maxkb_stream, get_llm_stream, Colors
 
 app = Quart(__name__)
+scheduler = AsyncIOScheduler()
 app = cors(app, allow_origin="*")
 max_workers = 4
 future_map = defaultdict(set)
 task_control = Manager().dict()
+
+db_config = {
+    'dbname': 'maxkb',
+    'user': 'postgres',
+    'password': 'Password123@postgres',
+    'host': '183.131.7.9',
+    'port': '5432'
+}
 
 def init_worker():
     # 初始化TTS模型
@@ -397,6 +410,87 @@ async def serve_audio(filename):
         print(f"提供音频文件时出错: {e}")
         return 'Internal server error', 500
 
+@app.route('/start_periodic_task', methods=['POST'])
+async def start_periodic_task():
+    data = await request.form
+    interval = int(data.get('interval'))
+    goods_info = data.get('goods_info')
+    choose_num = data.get('choose_num')  
+    room_id = data.get('room_id')
+    if not interval:
+        return {"error": "缺少执行间隔字段"}, 400
+    
+    # 定义要定时执行的任务
+    async def periodic_task(job_id, interval, room_id):
+        print(f"定时任务执行于: {time()}")
+        remote_http = RemoteHTTP()
+        
+        #获取b站弹幕接口
+        comments = remote_http.get_comment_from_bilibili(room_id, interval)
+        # comments.append("这双鞋多少钱")
+        
+        #ai挑选弹幕
+        choose_comments = remote_http.choose_comment(goods_info, comments, choose_num)
+        
+        answers = []
+        
+        for choose_comment in choose_comments:
+            # 弹幕拿去问 rag
+            answer = remote_http.get_chat_completion(choose_comment)
+            answers.append(answer)
+
+     
+        #存到postgres中
+        db_manager = DatabaseManager(db_config)
+        db_manager.insert_comments_job(job_id, comments, choose_comments, answers, "", "")
+
+    job_id = str(uuid.uuid4())
+    # 添加定时任务
+    job = scheduler.add_job(periodic_task, 'interval', seconds=interval, args=[job_id, interval,room_id])
+
+    scheduler.start()
+    
+    return {"message": "定时任务已启动", "job_id": job.id, "pg_job_id": job_id}, 200
+
+@app.route('/stop_periodic_task', methods=['POST'])
+async def stop_periodic_task():
+    data = await request.form
+    job_id = data.get('job_id')  # 获取要停止的任务ID
+    if not job_id:
+        return {"error": "缺少任务ID字段"}, 500
+    
+    # 停止指定的任务
+    job = scheduler.get_job(job_id)
+    if job:
+        job.remove()
+        scheduler.shutdown()
+        return {"message": "定时任务已停止"}, 200
+    else:
+        return {"error": "未找到指定的任务ID"}, 500
+
+@app.route('/get_result_by_id', methods=['POST'])
+async def get_result_by_id():
+    data = await request.form
+    job_id = data.get('job_id')  # 获取要查询的任务ID
+    if not job_id:
+        return {"error": "缺少任务ID字段"}, 400
+
+    db_manager = DatabaseManager(db_config)
+    result = db_manager.get_comments_job_by_id(job_id)
+
+    if result:
+        comments, choose_comments, answers, video_url, audio_url = result['comments'], result['choose_comments'], result['answers'],result['video_url'], result['audio_url']
+        return {
+            "job_id": job_id,
+            "comments": comments,
+            "choose_comments": choose_comments,
+            "answers": answers,
+            "video_url": video_url,
+            "audio_url": audio_url
+        }, 200
+    else:
+        return {"error": "未找到指定的任务ID"}, 404
+    
 if __name__ == "__main__":
     # 确保输出目录存在
     os.makedirs("stream_output_wav", exist_ok=True)
