@@ -47,7 +47,7 @@
             :checkCanPlay="checkCanPlay" @stream-start="handleStreamStart" @stream-end="handleStreamEnd" />
         </el-card> -->
 
-        <el-card class="video-card">
+        <!-- <el-card class="video-card">
           <template #header>
             <div class="card-header">
               <span>生成视频</span>
@@ -58,7 +58,7 @@
           </el-button>
           <video v-if="videoUrl" :src="videoUrl" controls></video>
 
-        </el-card> -->
+        </el-card>  -->
 
         <el-card class="live-card">
           <template #header>
