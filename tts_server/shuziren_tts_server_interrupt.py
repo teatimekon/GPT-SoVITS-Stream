@@ -256,8 +256,8 @@ async def chat():
         headers={'Transfer-Encoding': 'chunked'}
     )
 
-
-async def process_tts(text, request_id, rank):
+# 单条文本转语音
+async def process_tts(text, request_id, rank=0):
     index = request_id + "_" + str(rank)
     task_control[request_id] = False    # 任务开始，打断设置为 false
 
@@ -278,9 +278,38 @@ async def process_tts(text, request_id, rank):
     relative_path = os.path.basename(output_path)
     res = {
         "path": f"stream_output_wav/{relative_path}",
-        "index": idx
     }
     return res
+
+# audio转视频
+async def audio_to_video(audio_path):
+    form_data = aiohttp.FormData()
+    form_data.add_field('uploaded_audio', audio_path)
+
+    
+    async with aiohttp.ClientSession() as session:
+        base_url = "http://183.131.7.9:5000/generate_video"
+        async with session.post(base_url, data=form_data) as response:
+            if response.status == 200:
+                result = await response.json()
+                
+                print(f"视频生成成功，url: {result['video_url']}")
+                return result
+            else:
+                return {"error": "Failed to generate video"}
+
+# 弹幕转视频
+async def comment_to_video(comment,request_id):
+    # 1. 文本转音频
+    res = await process_tts(comment, request_id)
+    
+    # 本地音频绝对路径发给echomimic
+    abs_audio_path = os.path.join(os.getcwd(), res.get('path'))
+    # 2. 音频转视频
+    res = await audio_to_video(abs_audio_path)
+    return res
+
+# 音频的接口，输入文本，转音频
 @app.route('/tts', methods=['POST'])
 async def tts():
     data = await request.get_json()
@@ -292,39 +321,17 @@ async def tts():
 
     return res
 
-# 输入文本，文本通过 tts 转成音频，再调用 echomimic 接口生成视频，返回对应 url
+
+# 视频的接口，输入文本，文本通过 tts 转成音频，再调用 echomimic 接口生成视频，返回对应 url
 @app.route('/tts_to_video', methods=['POST'])
 async def tts_to_video():
     data = await request.get_json()
     text = data.get('text')
     request_id = data.get('request_id')
-    rank = data.get('rank')
     
-    # res = await process_tts(text, request_id, rank)
-    res = {
-        "path": "input_audio/hutao_v1.wav",
-        "index": 1
-    }
-    abs_audio_path = os.path.join(os.getcwd(), res.get('path'))
+    res = await comment_to_video(text, request_id)
     
-    # 创建 FormData
-    form_data = aiohttp.FormData()
-    form_data.add_field('uploaded_audio', abs_audio_path)
-    # 可以添加其他可选参数
-    # form_data.add_field('width', '512')
-    # form_data.add_field('height', '512')
-    # 等等...
-    
-    async with aiohttp.ClientSession() as session:
-        base_url = "http://183.131.7.9:5000/generate_video"
-        async with session.post(base_url, data=form_data) as response:
-            if response.status == 200:
-                result = await response.json()
-                print(f"视频生成成功，url: {result['video_url']}")
-                return result
-            else:
-                return {"error": "Failed to generate video"}
-
+    return res
     
 @app.route('/test', methods=['GET'])
 async def test():
