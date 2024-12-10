@@ -49,99 +49,9 @@
           <streaming-audio ref="streamingAudioRef" :continuity-sentences="audioChunksWithSentences"
             :checkCanPlay="checkCanPlay" @stream-start="handleStreamStart" @stream-end="handleStreamEnd" />
         </el-card>
-
-        <!-- <el-card class="video-card">
-          <template #header>
-            <div class="card-header">
-              <span>生成视频</span>
-            </div>
-          </template>
-          <el-button type="primary" @click="generateVideo" :loading="isLoading" class="generate-btn">
-            生成视频
-          </el-button>
-          <video v-if="videoUrl" :src="videoUrl" controls></video>
-<<<<<<<< HEAD:frontend_video/src/App.vue
-        </el-card>
-
-        <el-card class="live-card">
-          <template #header>
-            <div class="card-header">
-              <span>直播控制</span>
-            </div>
-          </template>
-          <el-button type="success" @click="startLive" :disabled="jobId !== ''">开始获取弹幕</el-button>
-          <el-button type="danger" @click="stopLive" :disabled="jobId == ''">停止获取弹幕</el-button>
-        </el-card>
-
-        <el-card class="live-data-card">
-          <template #header>
-            <div class="card-header">
-              <span>直播数据</span>
-            </div>
-          </template>
-          <h4>回答</h4>
-          <p>{{ answers }}</p>
-
-          <h4>挑选弹幕</h4>
-          <p>{{ chooseComments }}</p>
-
-          <h4>所有弹幕</h4>
-          <p>{{ comments }}</p>
-
-          <h4>脚本id</h4>
-          <p>{{ jobId }}</p>
-        </el-card>
-        <el-card class="config-card">
-          <template #header>
-            <div class="card-header">
-              <span>直播配置</span>
-            </div>
-          </template>
-          <el-form label-width="100px">
-            <el-form-item label="商品信息">
-              <el-input v-model="goodsInfo"></el-input>
-            </el-form-item>
-            <el-form-item label="弹幕选择数量">
-              <el-input-number v-model="chooseNum" :min="1"></el-input-number>
-            </el-form-item>
-            <el-form-item label="脚本间隔 (秒)">
-              <el-input-number v-model="interval" :min="1"></el-input-number>
-            </el-form-item>
-            <el-form-item label="获取弹幕间隔 (毫秒)">
-              <el-input-number v-model="fetchDataInterval" :min="1000"></el-input-number>
-            </el-form-item>
-            <el-form-item label="直播房间id">
-              <el-input v-model="roomId"></el-input>
-            </el-form-item>
-          </el-form>
-        </el-card>
-========
-        </el-card> -->
->>>>>>>> c2a6410 (修改前端文件名，固定生成音频版):frontend_audio/src/App.vue
       </el-main>
     </el-container>
 
-    <!-- 上传图片部分 -->
-    <!-- <el-card class="upload-card">
-      <template #header>
-        <div class="card-header">
-          <span>上传图片</span>
-        </div>
-      </template>
-      <input type="file" @change="handleImageFileChange" accept=".jpg,.jpeg,.png">
-      <el-button type="primary" @click="uploadImageManually">上传图片</el-button>
-    </el-card> -->
-
-    <!-- 上传音频部分 -->
-    <!-- <el-card class="upload-card">
-      <template #header>
-        <div class="card-header">
-          <span>上传音频</span>
-        </div>
-      </template>
-      <input type="file" @change="handleAudioFileChange" accept=".mp3,.wav">
-      <el-button type="primary" @click="uploadAudioManually">上传音频</el-button>
-    </el-card> -->
   </el-container>
 </template>
 
@@ -167,22 +77,7 @@ const streamingAudioRef = ref(null)
 const shouldPlayNext = ref(true)
 const canStreamPlay = ref(true)
 const currentAudioIndex = ref(0)
-const videoUrl = ref('');
-const imageUrl = ref('');
-const audioUrl = ref('');
-const imageFile = ref(null);
-const audioFile = ref(null);
-const jobId = ref('');
-const answers = ref('');
-const chooseComments = ref('');
-const comments = ref('');
-const goodsInfo = ref('女士拖鞋舒适鞋日常步行');
-const chooseNum = ref(1);
-const interval = ref(60);
-const fetchDataInterval = ref(60000); // 默认10秒
-const pgJobId = ref('');
-const roomId = ref('1752664819');
-let fetchLiveDataInterval = ref(null);
+
 
 
 const handleContentGenerated = (content) => {
@@ -247,8 +142,6 @@ const handleStreamStart = () => {
 
 const handleStreamEnd = () => {
   console.log('流式处理结束,handleStreamEnd', audioPlayerRef.value)
-
-  canStreamPlay.value = false
   if (audioPlayerRef.value) {
     shouldPlayNext.value = true
   }
@@ -275,171 +168,6 @@ const checkCanPlay = async () => {
     await new Promise(r => setTimeout(r, 100))
   }
 }
-const generateVideo = async () => {
-  try {
-    isLoading.value = true;
-    const formData = new FormData();
-    formData.append('uploaded_img', imageUrl.value);
-    formData.append('uploaded_audio', audioUrl.value);
-    formData.append('width', '512');
-    formData.append('height', '512');
-    formData.append('length', '1200');
-    formData.append('seed', '420');
-    formData.append('facemask_dilation_ratio', '0.1');
-    formData.append('facecrop_dilation_ratio', '0.5');
-    formData.append('context_frames', '12');
-    formData.append('context_overlap', '3');
-    formData.append('cfg', '2.5');
-    formData.append('steps', '30');
-    formData.append('sample_rate', '16000');
-    formData.append('fps', '24');
-    formData.append('device', 'cuda');
-
-    const videoResponse = await api.generateVideo(formData);
-    videoUrl.value = videoResponse.url;
-
-  } catch (error) {
-    console.error('生成视频失败:', error);
-    ElMessage.error('生成视频失败');
-  } finally {
-    isLoading.value = false;
-  }
-};
-// 处理图片上传成功
-const handleImageUploadSuccess = async (response) => {
-  imageUrl.value = response.image_path
-}
-
-// 验证图片上传
-const beforeImageUpload = (file) => {
-  const isImage = file.type === 'image/jpeg' || file.type === 'image/png'
-  if (!isImage) {
-    ElMessage.error('只能上传JPEG或PNG格式的图片文件!')
-  }
-  return isImage
-}
-
-// 手动上传图片
-const uploadImageManually = async () => {
-  if (!imageFile.value) {
-    ElMessage.error('请选择一个图片文件')
-    return
-  }
-
-  const formData = new FormData()
-  formData.append('image', imageFile.value)
-
-  try {
-    const response = await api.uploadImage(formData)
-    handleImageUploadSuccess(response)
-  } catch (error) {
-    ElMessage.error('上传图片失败')
-  }
-}
-
-// 处理音频上传成功
-const handleAudioUploadSuccess = (response) => {
-  audioUrl.value = response.audio_path
-}
-
-// 验证音频上传
-const beforeAudioUpload = (file) => {
-  const isAudio = file.type === 'audio/mpeg' || file.type === 'audio/wav'
-  if (!isAudio) {
-    ElMessage.error('只能上传MP3或WAV格式的音频文件!')
-  }
-  return isAudio
-}
-
-// 手动上传音频
-const uploadAudioManually = async () => {
-  if (!audioFile.value) {
-    ElMessage.error('请选择一个音频文件')
-    return
-  }
-
-  const formData = new FormData()
-  formData.append('audio', audioFile.value)
-
-  try {
-    const response = await api.uploadAudio(formData)
-    handleAudioUploadSuccess(response)
-  } catch (error) {
-    ElMessage.error('上传音频失败')
-  }
-}
-
-// 处理图片文件变化
-const handleImageFileChange = (event) => {
-  const file = event.target.files[0]
-  if (beforeImageUpload(file)) {
-    imageFile.value = file
-  }
-}
-
-// 处理音频文件变化
-const handleAudioFileChange = (event) => {
-  const file = event.target.files[0]
-  if (beforeAudioUpload(file)) {
-    audioFile.value = file
-  }
-}
-const fetchLiveData = async () => {
-  try {
-    const formData = new FormData();
-    formData.append('job_id', pgJobId.value);
-    const response = await api.getResultById(formData);
-
-    answers.value = response.answers;
-    chooseComments.value = response.choose_comments;
-    comments.value = response.comments;
-  } catch (error) {
-    console.error('获取直播数据失败:', error);
-  }
-};
-const startLive = async () => {
-  // isLoading.value = true;
-  if (!goodsInfo.value || !chooseNum.value || !interval.value) {
-    ElMessage.error('请填写所有配置项');
-    return;
-  }
-  const formData = new FormData();
-  formData.append('goods_info', goodsInfo.value);
-  formData.append('choose_num', chooseNum.value);
-  formData.append('interval', interval.value);
-  formData.append('room_id',roomId.value)
-  const response = await api.startPeriodicTask(formData);
-  console.log('startPeriodicTask response', response);
-  jobId.value = response.job_id;
-  pgJobId.value = response.pg_job_id;
-  ElMessage.success('直播已开始');
-
-  // 清除之前的定时器
-  clearInterval(fetchLiveDataInterval.value);
-
-  // 设置新的定时器
-  fetchLiveDataInterval.value = setInterval(fetchLiveData, fetchDataInterval.value);
-};
-const stopLive = async () => {
-
-  // isLoading.value = false;
-  if (!jobId.value) {
-    ElMessage.error('没有正在运行的直播任务');
-    return;
-  }
-  const formData = new FormData();
-  formData.append('job_id', jobId.value);
-  await api.stopPeriodicTask(formData);
-  clearInterval(fetchLiveDataInterval.value);
-  jobId.value = '';
-  pgJobId.value = '';
-  answers.value = '';
-  chooseComments.value = '';
-  comments.value = '';
-  roomId.value = '';
-  ElMessage.success('直播已停止');
-};
-
 </script>
 
 <style>

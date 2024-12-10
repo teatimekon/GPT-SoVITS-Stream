@@ -12,7 +12,8 @@ import multiprocessing.resource_tracker
 import multiprocessing.spawn
 import multiprocessing.util
 from time import time
-
+import json
+import base64
 # 第三方库导入
 import numpy as np
 import psutil
@@ -20,6 +21,7 @@ import soundfile as sf
 import torch
 from quart import Quart, request, Response, send_file
 from quart_cors import cors
+import aiohttp
 
 # 本地模块导入
 from TTS_infer_pack.TTS import TTS, TTS_Config
@@ -84,15 +86,15 @@ class AudioStreamManager:
         self.next_index = 1     # 下一个要发送的音频索引
         self.is_completed = False
         
-    def add_audio(self, index, audio_data, sr):
-        self.audio_buffer[index] = (audio_data, sr)
+    def add_audio(self, index, audio_data, sr,text):
+        self.audio_buffer[index] = (audio_data, sr,text)
         
     async def get_next_audio(self):
         """获取下一个音频数据"""
         if self.next_index in self.audio_buffer:
-            audio_data, sr = self.audio_buffer[self.next_index]
+            audio_data, sr,text = self.audio_buffer[self.next_index]
             self.next_index += 1
-            return audio_data, sr,self.next_index-1
+            return audio_data, sr,text,self.next_index-1
         return None
     
     def mark_completed(self):
@@ -163,11 +165,11 @@ def tts_run(
             output_path = f"stream_output_wav/output_{index}.wav"
             sf.write(output_path, audio_data, sr)
             print(f"音频数据大小:{audio_data.shape}  ,{audio_data}")
-        return output_path, index,sr,audio_data
+        return output_path, index,sr,audio_data,text
     
     except TaskCancelledException:
         print(f"tts_worker,id:{index} 任务被取消")
-        return output_path, index,sr,audio_data
+        return output_path, index,sr,audio_data,text
     except Exception as e:
         print(f"tts_worker,id:{index} 任务执行失败 {e}")
         raise
@@ -186,16 +188,16 @@ async def chat():
     # 处理单个任务的结果
     def done_callback(future):
         try:
-            output_path, idx, sr, audio_data = future.result()
+            output_path, idx, sr, audio_data,text = future.result()
             print(f"任务完成，idx: {idx}")
-            audio_manager.add_audio(idx, audio_data, sr)
+            audio_manager.add_audio(idx, audio_data, sr,text)
         except Exception as e:
             print(f"{Colors.RED}任务被取消: {e}{Colors.ENDC}")
         finally:
             # 从活跃任务中移除
             if request_id in future_map and future in future_map[request_id]:
                 future_map[request_id].remove(future)
-            # 如果所有任务完成，标记音频流完成
+            # 如果所有任务完成，标记音频���完成
             if stream_completed and not future_map[request_id]:
                 print(f"{Colors.OKGREEN}所有任务完成_done_callback{Colors.ENDC}")
                 audio_manager.mark_completed()
@@ -229,8 +231,18 @@ async def chat():
         while True:
             res = await audio_manager.get_next_audio()
             if res is not None:
-                audio_data, sr, index = res
-                yield audio_data.tobytes()
+                audio_data, sr, text, index = res
+                
+                # 创建包含文本和音频的JSON数据
+                chunk_data = {
+                    'text': text,
+                    'index': index,
+                    'audio': base64.b64encode(audio_data.tobytes()).decode('utf-8')
+                }
+                
+                # yield JSON字符串
+                yield json.dumps(chunk_data) + '\n'
+                
             elif audio_manager.is_completed:
                 print(f"{Colors.OKGREEN}所有任务完成_generate{Colors.ENDC}")
                 task_control.pop(request_id,None)
@@ -238,14 +250,14 @@ async def chat():
                 break
             await asyncio.sleep(0.01)
             
-    return Response(generate(), mimetype='audio/wav')
+    return Response(
+        generate(),
+        mimetype='application/x-ndjson',  # 使用换行分隔的JSON流
+        headers={'Transfer-Encoding': 'chunked'}
+    )
 
-@app.route('/tts', methods=['POST'])
-async def tts():
-    data = await request.get_json()
-    text = data.get('text')
-    request_id = data.get('request_id')
-    rank = data.get('rank')
+
+async def process_tts(text, request_id, rank):
     index = request_id + "_" + str(rank)
     task_control[request_id] = False    # 任务开始，打断设置为 false
 
@@ -261,7 +273,7 @@ async def tts():
         task_control_dict=task_control,
     )
     
-    output_path, idx, sr, audio_data = await loop.run_in_executor(None, future.result)
+    output_path, idx, sr, audio_data,text= await loop.run_in_executor(None, future.result)
     # 返回相对路径，去掉前面的目录部分
     relative_path = os.path.basename(output_path)
     res = {
@@ -269,8 +281,50 @@ async def tts():
         "index": idx
     }
     return res
+@app.route('/tts', methods=['POST'])
+async def tts():
+    data = await request.get_json()
+    text = data.get('text')
+    request_id = data.get('request_id')
+    rank = data.get('rank')
 
-        
+    res = await process_tts(text, request_id, rank)
+
+    return res
+
+# 输入文本，文本通过 tts 转成音频，再调用 echomimic 接口生成视频，返回对应 url
+@app.route('/tts_to_video', methods=['POST'])
+async def tts_to_video():
+    data = await request.get_json()
+    text = data.get('text')
+    request_id = data.get('request_id')
+    rank = data.get('rank')
+    
+    # res = await process_tts(text, request_id, rank)
+    res = {
+        "path": "input_audio/hutao_v1.wav",
+        "index": 1
+    }
+    abs_audio_path = os.path.join(os.getcwd(), res.get('path'))
+    
+    # 创建 FormData
+    form_data = aiohttp.FormData()
+    form_data.add_field('uploaded_audio', abs_audio_path)
+    # 可以添加其他可选参数
+    # form_data.add_field('width', '512')
+    # form_data.add_field('height', '512')
+    # 等等...
+    
+    async with aiohttp.ClientSession() as session:
+        base_url = "http://183.131.7.9:5000/generate_video"
+        async with session.post(base_url, data=form_data) as response:
+            if response.status == 200:
+                result = await response.json()
+                print(f"视频生成成功，url: {result['video_url']}")
+                return result
+            else:
+                return {"error": "Failed to generate video"}
+
     
 @app.route('/test', methods=['GET'])
 async def test():
@@ -314,6 +368,13 @@ async def kill():
     end_time = time()
     print(f"map长度{Colors.OKGREEN} {len(future_map)} {Colors.ENDC},耗时{end_time-start_time}")
     return str(len(future_map))
+
+@app.route('/video/<path:filename>')
+async def serve_video(filename):
+    #video的路径文件夹在/disk6/dly/bobby_echomimic/output/tmp下
+    video_abs_folder = '/disk6/dly/bobby_echomimic/output/tmp/'
+    video_abs_path = os.path.join(video_abs_folder, filename)   
+    return await send_file(video_abs_path, mimetype='video/mp4')
 
 @app.route('/audio/<path:filename>')
 async def serve_audio(filename):

@@ -16,7 +16,7 @@
               <span>生成的口播文本</span>
               <el-button v-if="generatedContent && !audioChunks.length" type="primary" @click="generateAudio"
                 :loading="isLoading" class="generate-btn">
-                生成语音
+                生成视频
               </el-button>
             </div>
           </template>
@@ -37,7 +37,7 @@
           <el-empty v-else description="暂无内容" />
         </el-card>
 
-        <el-card class="stream-card">
+        <!-- <el-card class="stream-card">
           <template #header>
             <div class="card-header">
               <span>实时音频流</span>
@@ -45,7 +45,7 @@
           </template>
           <streaming-audio ref="streamingAudioRef" :continuity-sentences="audioChunksWithSentences"
             :checkCanPlay="checkCanPlay" @stream-start="handleStreamStart" @stream-end="handleStreamEnd" />
-        </el-card>
+        </el-card> -->
 
         <el-card class="video-card">
           <template #header>
@@ -57,7 +57,8 @@
             生成视频
           </el-button>
           <video v-if="videoUrl" :src="videoUrl" controls></video>
-        </el-card>
+
+        </el-card> -->
 
         <el-card class="live-card">
           <template #header>
@@ -122,7 +123,7 @@
     </el-container>
 
     <!-- 上传图片部分 -->
-    <!-- <el-card class="upload-card">
+    <el-card class="upload-card">
       <template #header>
         <div class="card-header">
           <span>上传图片</span>
@@ -130,10 +131,10 @@
       </template>
       <input type="file" @change="handleImageFileChange" accept=".jpg,.jpeg,.png">
       <el-button type="primary" @click="uploadImageManually">上传图片</el-button>
-    </el-card> -->
+    </el-card>
 
     <!-- 上传音频部分 -->
-    <!-- <el-card class="upload-card">
+    <el-card class="upload-card">
       <template #header>
         <div class="card-header">
           <span>上传音频</span>
@@ -141,7 +142,7 @@
       </template>
       <input type="file" @change="handleAudioFileChange" accept=".mp3,.wav">
       <el-button type="primary" @click="uploadAudioManually">上传音频</el-button>
-    </el-card> -->
+    </el-card>
   </el-container>
 </template>
 

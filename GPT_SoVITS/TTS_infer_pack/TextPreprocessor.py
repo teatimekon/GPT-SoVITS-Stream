@@ -76,8 +76,8 @@ class TextPreprocessor:
         text = text.strip("\n")
         if len(text) == 0:
             return []
-        # if (text[0] not in splits and len(get_first(text)) < 4): 
-        #     text = "。" + text if lang != "en" else "." + text
+        if (text[0] not in splits and len(get_first(text)) < 4): 
+            text = "。" + text if lang != "en" else "." + text
         print(i18n("实际输入的目标文本:"))
         print(text)
         

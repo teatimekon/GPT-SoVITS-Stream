@@ -875,7 +875,7 @@ class TTS:
                     repetition_penalty=repetition_penalty,
                 )
                 infer_end_time = ttime()
-                print(f"推理时间: {infer_end_time - infer_start_time:.2f}秒")
+                print(f"句子：{norm_text}  的推理时间: {infer_end_time - infer_start_time:.2f}秒")
                 t4 = ttime()
                 t_34 += t4 - t3
 

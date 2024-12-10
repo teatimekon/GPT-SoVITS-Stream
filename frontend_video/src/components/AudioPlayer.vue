@@ -1,10 +1,10 @@
 <template>
-  <div class="audio-player">
+  <div class="video-player">
     <div class="loading-state" v-if="loading">
       <el-button :loading="true">生成中...</el-button>
     </div>
     <div v-else>
-      <audio 
+      <video 
         ref="audioRef"
         :src="currentAudio?.url"
         @ended="handleEnded"
@@ -12,7 +12,7 @@
         @play="handlePlay"
         controls
         controlsList="nodownload"
-        class="audio-element"
+        class="video-element"
       />
       <div class="player-controls">
         <div class="time-info" v-if="duration">
@@ -77,7 +77,7 @@ const playAudio = async () => {
     await audioRef.value.play()
   } catch (error) {
     if (error.name === 'AbortError') {
-      console.log('音频加载被打断，正在切换到新音频')
+      console.log('视频加载被打断，正在切换到新视频')
     } else {
       console.error('播放出错:', error)
     }
@@ -138,7 +138,7 @@ const updateTime = () => {
   }
 }
 
-// 监听播放列表变化
+// ��听播放列表变化
 watch(() => props.playlist, (newPlaylist) => {
   if (newPlaylist.length > 0) {
     currentIndex.value = 0
@@ -218,7 +218,7 @@ defineExpose({
 </script>
 
 <style scoped>
-.audio-player {
+.video-player {
   min-width: 300px;
   padding: 16px;
   background: #fafafa;
@@ -226,9 +226,9 @@ defineExpose({
   box-shadow: 0 2px 8px rgba(0,0,0,0.04);
 }
 
-.audio-element {
+.video-element {
   width: 100%;
-  height: 54px;
+  height: auto;
   margin-bottom: 8px;
   border-radius: 8px;
   outline: none;

@@ -1,42 +1,73 @@
 <template>
   <div class="streaming-audio">
-    <el-input
-      v-model="question"
-      type="textarea"
-      :rows="3"
-      placeholder="请输入您的问题"
-      :disabled="isPlaying"
-    />
-    
-    <div class="controls">
-      <el-button 
-        type="primary" 
-        @click="handlePlay"
-        :loading="isLoading"
-        :disabled="isPlaying || !question.trim()"
-      >
-        播放
-      </el-button>
-      <el-button 
-        type="warning" 
-        @click="stopStream"
-        :disabled="!isPlaying"
-      >
-        停止
-      </el-button>
+    <div v-if="dialogHistory.length" class="dialog-history">
+      <div v-for="(dialog, index) in dialogHistory" :key="index" class="dialog-item">
+        <div class="question-container">
+          <div class="question-label">问题：</div>
+          <div class="question-content">{{ dialog.question }}</div>
+        </div>
+        <div class="answer-container">
+          <div class="answer-title">AI回答：</div>
+          <div class="answer-content">
+            <div class="paragraph">
+              <span
+                v-for="chunk in dialog.answer" 
+                :key="chunk.index"
+                :class="['text-chunk', { 
+                  'active': currentDialogIndex === index && currentChunkIndex === chunk.index 
+                }]"
+              >{{ chunk.text }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
+    <div class="input-section">
+      <el-input
+        v-model="question"
+        type="textarea"
+        :rows="3"
+        placeholder="请输入您的问题"
+        :disabled="isPlaying"
+      />
+      
+      <div class="controls">
+        <el-button 
+          type="primary" 
+          @click="handlePlay"
+          :loading="isLoading"
+          :disabled="isPlaying || !question.trim()"
+        >
+          播放
+        </el-button>
+        <el-button 
+          type="warning" 
+          @click="stopStream"
+          :disabled="!isPlaying"
+        >
+          停止
+        </el-button>
+        <el-button 
+          type="danger" 
+          @click="clearHistory"
+          :disabled="isPlaying || !dialogHistory.length"
+        >
+          清空历史
+        </el-button>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, nextTick, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../services/api'
 
 
 const statusText = ref('')
-const requestId = ref('')
+const requestId = ref(`${Date.now().toString()}-${Math.random().toString(36).substring(2, 15)}`)
 const isLoading = ref(false)
 const isPlaying = ref(false)
 const question = ref('')
@@ -44,13 +75,18 @@ const audioContext = ref(null)
 const currentSource = ref(null)
 let isFirstChunk = true
 const pendingBuffer = ref(new Uint8Array(0))
+const textChunks = ref([])
+const currentChunkIndex = ref(null)
+const answerContentRef = ref(null)
+const dialogHistory = ref([])
+const currentDialogIndex = ref(null)
 
 // 添加重置状态的函数
 const resetState = () => {
   isPlaying.value = false
   isLoading.value = false
   isFirstChunk = true
-  statusText.value = '等待播放'
+  currentChunkIndex.value = null
   pendingBuffer.value = new Uint8Array(0)
 }
 
@@ -66,6 +102,19 @@ const props = defineProps({
   }
 })
 
+// 初始化AudioContext
+onMounted(() => {
+  try {
+    audioContext.value = new (window.AudioContext || window.webkitAudioContext)({
+      sampleRate: 32000  // 设置采样率
+    })
+    console.log('AudioContext initialized:', audioContext.value)
+  } catch (error) {
+    console.error('初始化AudioContext失败:', error)
+    ElMessage.error('初始化音频播放器失败')
+  }
+})
+
 // 处理播放按钮点击
 const handlePlay = async () => {
   if (!question.value.trim()) {
@@ -75,19 +124,27 @@ const handlePlay = async () => {
   
   isLoading.value = true
   try {
-    // 等待获得播放许可
-    console.log("start stream")
-    // 发出流开始事件，告诉父组件马上就要流式了
-    emit('streamStart')
-    // 初始化AudioContext
-    if (!audioContext.value) {
-      audioContext.value = new (window.AudioContext || window.webkitAudioContext)({
-        sampleRate: 32000
+    // 拼接历史对话和当前问题
+    let fullQuestion = ''
+    if (dialogHistory.value.length > 0) {
+      // 添加历史对话
+      dialogHistory.value.forEach(dialog => {
+        fullQuestion += `这是历史记录：用户问：${dialog.question}\n AI回答：${dialog.answer.map(chunk => chunk.text).join('')}\n\n`
       })
     }
+    // 添加当前问题
+    fullQuestion += `这是当前问题：${question.value}`
+    console.log('Full question:', fullQuestion)
+    // 创建新的对话记录
+    const newDialog = {
+      question: question.value,
+      answer: []
+    }
+    dialogHistory.value.push(newDialog)
+    currentDialogIndex.value = dialogHistory.value.length - 1
     
-    isFirstChunk = true
-    await startStream(question.value)
+    // 使用完整的问题文本调用startStream
+    await startStream(fullQuestion)
   } catch (error) {
     console.error('开始播放失败:', error)
     ElMessage.error('播放失败')
@@ -98,9 +155,14 @@ const handlePlay = async () => {
 
 // 播放单个音频块
 const playAudioChunk = async (audioData) => {
-  if (!audioContext.value) return
+  if (!audioContext.value) {
+    console.error('AudioContext not initialized')
+    return
+  }
   
   try {
+    console.log('Playing audio chunk, size:', audioData.length)
+    
     // 合并之前未处理的数据和新数据
     const combinedBuffer = new Uint8Array(pendingBuffer.value.length + audioData.length)
     combinedBuffer.set(pendingBuffer.value)
@@ -118,7 +180,7 @@ const playAudioChunk = async (audioData) => {
     // 创建Int16Array来存储转换后的数据
     const int16Array = new Int16Array(processableData.length / 2)
     
-    // 每两个字节组合成一个 Int16 值
+    // 每个字节组合成一个 Int16 值
     for (let i = 0; i < processableData.length; i += 2) {
       const low = processableData[i]
       const high = processableData[i + 1]
@@ -126,7 +188,10 @@ const playAudioChunk = async (audioData) => {
     }
     
     // 如果没有可处理的完整数据，直接返回
-    if (int16Array.length === 0) return
+    if (int16Array.length === 0) {
+      console.log('No complete audio data to process')
+      return
+    }
     
     // 创建音频buffer
     const audioBuffer = audioContext.value.createBuffer(1, int16Array.length, 32000)
@@ -153,6 +218,7 @@ const playAudioChunk = async (audioData) => {
     // 播放音频
     const startTime = audioContext.value.currentTime
     source.start(startTime)
+    console.log('Started playing audio chunk')
     
     // 等待播放完成
     await new Promise(resolve => {
@@ -169,11 +235,13 @@ const playAudioChunk = async (audioData) => {
 // 开始流式播放
 const startStream = async (text) => {
   try {
-    requestId.value = Date.now().toString()
-
-    const response = await api.chatStream(text, requestId.value)
+    // 不再重置文本chunks，而是添加到当前对话
+    currentChunkIndex.value = null
     
+    const response = await api.chatStream(text, requestId.value)
     const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
     
     while (true) {
       const { done, value } = await reader.read()
@@ -182,20 +250,72 @@ const startStream = async (text) => {
         resetState()
         break
       }
-      // 等待父组件发出的结束信号
-      await props.checkCanPlay()
-      await playAudioChunk(value)
+
+      // 将新的数据添加到buffer
+      buffer += decoder.decode(value, { stream: true })
       
-      if (isFirstChunk) {
-        isFirstChunk = false
-        isPlaying.value = true
+      // 按换行符分割并处理完整的JSON
+      const lines = buffer.split('\n')
+      buffer = lines.pop() // 保留最后一个不完整的行
+      
+      for (const line of lines) {
+        console.log(line)
+        if (!line.trim()) continue
+        
+        try {
+          const chunk = JSON.parse(line)
+          console.log('Received chunk:', chunk)
+          
+          // 添加到当前对话的回答中
+          if (currentDialogIndex.value !== null) {
+            dialogHistory.value[currentDialogIndex.value].answer.push({
+              text: chunk.text,
+              index: chunk.index
+            })
+          }
+          
+          // 更新当前chunk索引
+          currentChunkIndex.value = chunk.index
+          
+          // 自动滚动到最新内容
+          await nextTick()
+          const lastDialog = document.querySelector('.dialog-item:last-child')
+          if (lastDialog) {
+            lastDialog.scrollIntoView({ behavior: 'smooth', block: 'end' })
+          }
+          
+          // 发送文本给父组件
+          emit('chunkText', {
+            text: chunk.text,
+            index: chunk.index
+          })
+          
+          // 将base64音频数据转回Uint8Array
+          const audioData = new Uint8Array(
+            atob(chunk.audio)
+              .split('')
+              .map(char => char.charCodeAt(0))
+          )
+          
+          console.log('Decoded audio data size:', audioData.length)
+          
+          // 播放音频
+          await props.checkCanPlay()
+          await playAudioChunk(audioData)
+          
+          if (isFirstChunk) {
+            isFirstChunk = false
+            isPlaying.value = true
+          }
+        } catch (error) {
+          console.error('处理数据chunk失败:', error, 'Line:', line)
+        }
       }
     }
     
   } catch (error) {
     console.error('处理音频流失败:', error)
     resetState()
-    emit('streamEnd')
   }
 }
 
@@ -212,11 +332,11 @@ const stopStream = async () => {
         await audioContext.value.close()
         audioContext.value = null
       }
-      resetState() // 停止时重置状态
+      resetState()
       emit('streamEnd')
     } catch (error) {
       console.error('停止播放失败:', error)
-      resetState() // 错误时也重置状态
+      resetState()
     }
   }
 }
@@ -255,104 +375,148 @@ onMounted(() => {
 
 // 定义事件
 const emit = defineEmits([
-  'streamStart', 
-  'streamEnd', 
+  'streamStart',
+  'streamEnd',
   'beforeStreamStart',
-  'beforePlayNextChunk'  // 新增事件
+  'beforePlayNextChunk',
+  'chunkText'  // 新增事件用于传递文本
 ])
+
+// 新增清空历史功能
+const clearHistory = () => {
+  dialogHistory.value = []
+  currentDialogIndex.value = null
+  currentChunkIndex.value = null
+  question.value = ''
+}
 </script>
 
 <style scoped>
 .streaming-audio {
-  padding: 24px;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 20px;
-  width: 100%;
-  max-width: 600px;
-  margin: 0 auto;
+  height: 100%;
 }
 
-.el-input {
-  width: 100%;
+.dialog-history {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 16px;
 }
 
-:deep(.el-textarea__inner) {
+.dialog-item {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #fff;
   border-radius: 8px;
-  padding: 12px;
-  font-size: 14px;
-  line-height: 1.6;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  transition: all 0.3s ease;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  padding: 16px;
 }
 
-:deep(.el-textarea__inner:focus) {
-  box-shadow: 0 4px 12px rgba(64,158,255,0.1);
+.question-container {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  background: #f5f7fa;
+  border-radius: 8px;
+}
+
+.question-label {
+  font-weight: 500;
+  color: #606266;
+}
+
+.question-content {
+  color: #303133;
+  flex: 1;
+}
+
+.input-section {
+  position: sticky;
+  bottom: 0;
+  background: #fff;
+  padding: 16px;
+  border-top: 1px solid #e4e7ed;
+  z-index: 1;
+}
+
+.answer-container {
+  background: #fff;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.answer-title {
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #606266;
+  background: #f5f7fa;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.answer-content {
+  padding: 16px;
+}
+
+.paragraph {
+  line-height: 1.8;
+  text-align: justify;
+  color: #303133;
+  font-size: 14px;
+}
+
+.text-chunk {
+  display: inline;
+  transition: all 0.3s ease;
+  padding: 2px 0;
+  margin: 0;
+  border-radius: 2px;
+}
+
+.text-chunk.active {
+  background-color: #ecf5ff;
+  box-shadow: 0 0 0 2px #ecf5ff;
 }
 
 .controls {
   display: flex;
   gap: 12px;
-  width: 100%;
-  justify-content: center;
-  margin: 16px 0;
+  margin-top: 12px;
 }
 
-.controls .el-button {
-  min-width: 100px;
-  padding: 12px 24px;
-  font-size: 14px;
-  transition: all 0.3s ease;
+.dialog-history::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-.controls .el-button:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+.dialog-history::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: #c0c4cc;
 }
 
-audio {
-  width: 100%;
-  height: 54px;
-  border-radius: 8px;
-  background: #fafafa;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-}
-
-audio::-webkit-media-controls-panel {
-  background: linear-gradient(90deg, #f5f7fa 0%, #e4e7ed 100%);
-  border-radius: 8px;
-}
-
-audio::-webkit-media-controls-play-button {
-  background-color: #409EFF;
-  border-radius: 50%;
-  transition: all 0.3s ease;
-}
-
-audio::-webkit-media-controls-play-button:hover {
-  transform: scale(1.1);
-}
-
-audio::-webkit-media-controls-timeline {
-  background-color: #e4e7ed;
-  border-radius: 4px;
-  height: 4px;
-}
-
-audio::-webkit-media-controls-current-time-display,
-audio::-webkit-media-controls-time-remaining-display {
-  color: #606266;
-  font-family: 'Roboto Mono', monospace;
-  font-size: 12px;
-}
-
-.status-text {
-  color: #909399;
-  font-size: 14px;
-  padding: 8px 16px;
+.dialog-history::-webkit-scrollbar-track {
+  border-radius: 3px;
   background: #f5f7fa;
-  border-radius: 4px;
-  transition: all 0.3s ease;
+}
+
+.dialog-item {
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 </style>
