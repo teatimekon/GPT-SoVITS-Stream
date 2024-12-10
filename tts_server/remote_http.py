@@ -8,7 +8,7 @@ class RemoteHTTP:
     def __init__(self):
         pass
 
-    def get_comment_from_bilibili(self, roomid='1752664819', interval=21600):
+    def get_comment_from_bilibili(self, roomid="1752664819", interval=21600):
         base_url = f"https://api.live.bilibili.com/xlive/web-room/v1/dM/gethistory?roomid={roomid}"
         headers = {
             "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -65,12 +65,10 @@ class RemoteHTTP:
         response = requests.post(url, headers=headers, json=payload)
         if response.status_code == 200:
             response_data = response.json()
-            return [item['content'] for item in response_data.get('data', [])]
+            return [item["content"] for item in response_data.get("data", [])]
 
         else:
             raise Exception(f"请求失败: {response.status_code}, {response.text}")
-
-
     def get_chat_completion(self, question):
         api_key = "application-df40f7b453cb74ee46da8dc31cc385f7"
         base_url = "http://183.131.7.9:8083/api/application/68b32f0e-64e2-11ef-977b-26cf8447a8c9/chat/completions"
@@ -85,16 +83,42 @@ class RemoteHTTP:
                 #     "role": "assistant",
                 #     "content": "你是杭州飞致云信息科技有限公司旗下产品 MaxKB 知识库问答系统的智能小助手，你的工作是帮助 MaxKB 用户解答使用中遇到的问题，用户找你回答问题时，你要把主题放在 MaxKB 知识库问答系统身上。"
                 # },
-                {
-                    "role": "user",
-                    "content": question
-                }
+                {"role": "user", "content": question}
             ],
-            "stream": False
+            "stream": False,
         }
         response = requests.post(base_url, headers=headers, json=data)
         if response.status_code == 200:
             response_data = response.json()
-            return response_data.get('choices', [{}])[0].get('message', {}).get('content', '')
+            return (
+                response_data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+        else:
+            raise Exception(f"请求失败: {response.status_code}, {response.text}")
+        
+    def beauty_comment(self, question, answer, style):
+        url = "http://183.131.7.9:8083/api/application/68b32f0e-64e2-11ef-977b-26cf8447a8c9/beauty_comment"
+
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Connection": "keep-alive",
+            "Referer": "http://183.131.7.9:8003/ui/application/68b32f0e-64e2-11ef-977b-26cf8447a8c9/SIMPLE/overview",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "question": question,
+            "answer": answer,
+            "style": style,
+            # "paragraph_now": paragraph_now,
+        }
+
+        response = requests.post(url, headers=headers, json=payload)
+
+        if response.status_code == 200:
+            return response.json().get("content")  
         else:
             raise Exception(f"请求失败: {response.status_code}, {response.text}")

@@ -407,17 +407,18 @@ async def start_periodic_task():
     goods_info = data.get('goods_info')
     choose_num = data.get('choose_num')  
     room_id = data.get('room_id')
+    style = data.get('style')
     if not interval:
         return {"error": "缺少执行间隔字段"}, 400
     
     # 定义要定时执行的任务
-    async def periodic_task(job_id, interval, room_id):
+    async def periodic_task(job_id, interval, room_id, style, goods_info, choose_num):
         print(f"定时任务执行于: {time()}")
         remote_http = RemoteHTTP()
         
         #获取b站弹幕接口
         comments = remote_http.get_comment_from_bilibili(room_id, interval)
-        # comments.append("这双鞋多少钱")
+        comments.append("这双鞋多少钱")
         
         #ai挑选弹幕
         choose_comments = remote_http.choose_comment(goods_info, comments, choose_num)
@@ -427,7 +428,8 @@ async def start_periodic_task():
         for choose_comment in choose_comments:
             # 弹幕拿去问 rag
             answer = remote_http.get_chat_completion(choose_comment)
-            answers.append(answer)
+            beauty_answer = remote_http.beauty_comment(choose_comment,answer,style)
+            answers.append(beauty_answer)
 
      
         #存到postgres中
@@ -436,7 +438,7 @@ async def start_periodic_task():
 
     job_id = str(uuid.uuid4())
     # 添加定时任务
-    job = scheduler.add_job(periodic_task, 'interval', seconds=interval, args=[job_id, interval,room_id])
+    job = scheduler.add_job(periodic_task, 'interval', seconds=interval, args=[job_id, interval,room_id,style, goods_info, choose_num])
 
     scheduler.start()
     

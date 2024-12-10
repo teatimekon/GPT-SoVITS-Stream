@@ -23,11 +23,8 @@
 
           <div class="content" v-if="generatedContent">
             <div class="content-text">
-              <div 
-                v-for="(chunk, index) in generatedContent" 
-                :key="index"
-                :class="['content-chunk', { 'active': currentAudioIndex === index }]"
-              >
+              <div v-for="(chunk, index) in generatedContent" :key="index"
+                :class="['content-chunk', { 'active': currentAudioIndex === index }]">
                 {{ chunk.content }}
               </div>
             </div>
@@ -50,7 +47,7 @@
             :checkCanPlay="checkCanPlay" @stream-start="handleStreamStart" @stream-end="handleStreamEnd" />
         </el-card>
 
-        <!-- <el-card class="video-card">
+        <el-card class="video-card">
           <template #header>
             <div class="card-header">
               <span>生成视频</span>
@@ -60,7 +57,6 @@
             生成视频
           </el-button>
           <video v-if="videoUrl" :src="videoUrl" controls></video>
-<<<<<<<< HEAD:frontend_video/src/App.vue
         </el-card>
 
         <el-card class="live-card">
@@ -113,11 +109,15 @@
             <el-form-item label="直播房间id">
               <el-input v-model="roomId"></el-input>
             </el-form-item>
+            <el-form-item label="回答风格">
+              <el-select v-model="style" placeholder="请选择回答风格">
+                <el-option label="正常风格" value="1"></el-option>
+                <el-option label="董宇辉" value="2"></el-option>
+                <el-option label="李佳琦" value="3"></el-option>
+              </el-select>
+            </el-form-item>
           </el-form>
         </el-card>
-========
-        </el-card> -->
->>>>>>>> c2a6410 (修改前端文件名，固定生成音频版):frontend_audio/src/App.vue
       </el-main>
     </el-container>
 
@@ -182,6 +182,7 @@ const interval = ref(60);
 const fetchDataInterval = ref(60000); // 默认10秒
 const pgJobId = ref('');
 const roomId = ref('1752664819');
+const style = ref("1");
 let fetchLiveDataInterval = ref(null);
 
 
@@ -407,7 +408,8 @@ const startLive = async () => {
   formData.append('goods_info', goodsInfo.value);
   formData.append('choose_num', chooseNum.value);
   formData.append('interval', interval.value);
-  formData.append('room_id',roomId.value)
+  formData.append('room_id', roomId.value)
+  formData.append('style', style.value)
   const response = await api.startPeriodicTask(formData);
   console.log('startPeriodicTask response', response);
   jobId.value = response.job_id;
@@ -436,7 +438,7 @@ const stopLive = async () => {
   answers.value = '';
   chooseComments.value = '';
   comments.value = '';
-  roomId.value = '';
+  roomId.value = '1752664819';
   ElMessage.success('直播已停止');
 };
 
