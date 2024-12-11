@@ -14,7 +14,7 @@ import multiprocessing.util
 from time import time
 import json
 import base64
-
+from datetime import datetime
 # 第三方库导入
 import numpy as np
 import psutil
@@ -220,7 +220,7 @@ async def chat():
             # 从活跃任务中移除
             if request_id in future_map and future in future_map[request_id]:
                 future_map[request_id].remove(future)
-            # 如果所有任务完成，标记音频���完成
+            # 如果所有任务完成，标记音频完成
             if stream_completed and not future_map[request_id]:
                 print(f"{Colors.OKGREEN}所有任务完成_done_callback{Colors.ENDC}")
                 audio_manager.mark_completed()
@@ -328,12 +328,18 @@ async def audio_to_video(audio_path):
 # 弹幕转视频
 async def comment_to_video(comment, request_id):
     # 1. 文本转音频
-    res = await process_tts(comment, request_id)
+    # res = await process_tts(comment, request_id)
 
-    # 本地音频绝对路径发给echomimic
-    abs_audio_path = os.path.join(os.getcwd(), res.get("path"))
-    # 2. 音频转视频
-    res = await audio_to_video(abs_audio_path)
+    # # 本地音频绝对路径发给echomimic
+    # abs_audio_path = os.path.join(os.getcwd(), res.get("path"))
+    # # 2. 音频转视频
+    # res = await audio_to_video(abs_audio_path)
+    
+    
+    #test
+    await asyncio.sleep(2)
+    res = {"video_url": "output_video_with_audio_20241206114838.mp4" }
+    
     return res
 
 
@@ -357,8 +363,8 @@ async def tts_to_video():
     text = data.get("text")
     request_id = data.get("request_id")
 
-    res = await comment_to_video(text, request_id)
-
+    # res = await comment_to_video(text, request_id)
+    res = {"video_url": "output_video_with_audio_20241210120605.mp4" }
     return res
 
 
@@ -499,6 +505,65 @@ def cleanup_audio_files():
     except Exception as e:
         print(f"清理音频文件时出错: {e}")
 
+# 修改后的periodic_task函数
+async def periodic_task(job_id, interval, room_id, style, goods_info, choose_num):
+    print(f"{Colors.OKGREEN}定时任务执行于: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}{Colors.ENDC}")
+    remote_http = RemoteHTTP()
+    
+    # 获取弹幕和选择评论
+    comments = remote_http.get_comment_from_bilibili(room_id, interval)
+    comments.append("这双鞋多少钱")
+    # choose_comments = remote_http.choose_comment(goods_info, comments, choose_num)
+    choose_comments = ["111", "222", "333"]
+    
+    # 用于跟踪所有任务的完成状态
+    tasks = []
+    answers = []
+    
+    async def process_comment(choose_comment):
+        # 获取answer
+        # answer = remote_http.get_chat_completion(choose_comment)
+        answer = "111"
+        answers.append(answer)
+        
+        # 生成视频
+        request_id = str(uuid.uuid4())
+        video_url = await comment_to_video(answer, request_id)
+        
+        # 存入Redis
+        redisManager = RedisManager(redis_config)
+        queue_name = f"video_url_{job_id}"
+        data = {
+            "video_url": video_url.get("video_url"),
+            "job_id": job_id,
+            "choose_comment": choose_comment,
+            "answer": answer,
+        }
+        print(f"{Colors.GREY}评论{choose_comment}  存入Redis{Colors.ENDC}")
+        redisManager.enqueue(queue_name, data)
+        
+        return answer
+
+    # 为每个评论创建异步任务
+    for choose_comment in choose_comments:
+        task = asyncio.create_task(process_comment(choose_comment))
+        tasks.append(task)
+    
+    # 创建数据库更新任务,但不等待它完成
+    async def update_db():
+        try:
+            # 等待所有视频处理完成
+            await asyncio.gather(*tasks)
+            # 更新数据库
+            db_manager = DatabaseManager(db_config)
+            db_manager.insert_comments_job(
+                job_id, comments, choose_comments, answers, "", ""
+            )
+        except Exception as e:
+            print(f"数据库更新失败: {e}")
+
+    # 启动数据库更新任务但不等待
+    asyncio.create_task(update_db())
 
 @app.route("/start_periodic_task", methods=["POST"])
 async def start_periodic_task():
@@ -508,73 +573,29 @@ async def start_periodic_task():
     choose_num = data.get("choose_num")
     room_id = data.get("room_id")
     style = data.get("style")
+    
     if not interval:
         return {"error": "缺少执行间隔字段"}, 400
 
-    # 定义要定时执行的任务
-    async def periodic_task(job_id, interval, room_id, style, goods_info, choose_num):
-        print(f"定时任务执行于: {time()}")
-        remote_http = RemoteHTTP()
-
-        # 获取b站弹幕接口
-        comments = remote_http.get_comment_from_bilibili(room_id, interval)
-        comments.append("这双鞋多少钱")
-
-        # ai挑选弹幕
-        choose_comments = remote_http.choose_comment(goods_info, comments, choose_num)
-
-        answers = []
-
-        for choose_comment in choose_comments:
-            # 弹幕拿去问 rag
-            answer = remote_http.get_chat_completion(choose_comment)
-            # beauty_answer = remote_http.beauty_comment(choose_comment,answer,style)
-            # answers.append(beauty_answer)
-            request_id = str(uuid.uuid4())
-
-            def on_video_url_loaded(video_url, job_id, choose_comment, answer):
-                print(f"Video URL loaded: {video_url}")
-                redisManager = RedisManager(redis_config)
-                queue_name = f"video_url_{job_id}"
-                data = {
-                    "video_url": video_url,
-                    "job_id": job_id,
-                    "choose_comment": choose_comment,
-                    "answer": answer,
-                }
-
-                redisManager.enqueue(queue_name, data)
-
-            async def call_callback(video_url, job_id, choose_comment, answer, callback):
-                callback(video_url, job_id, choose_comment, answer)
-
-            video_url_future = asyncio.create_task(comment_to_video(answer, request_id))
-            video_url = await video_url_future
-            await call_callback(
-                video_url, job_id, choose_comment, answer, on_video_url_loaded
-            )
-
-            answers.append(answer)
-
-        # 存到postgres中
-        db_manager = DatabaseManager(db_config)
-        db_manager.insert_comments_job(
-            job_id, comments, choose_comments, answers, "", ""
-        )
-
     job_id = str(uuid.uuid4())
+    print(f"{Colors.OKGREEN}添加定时任务{job_id}{Colors.ENDC}")
     # 添加定时任务
     job = scheduler.add_job(
         periodic_task,
-        "interval",
+        "interval", 
         seconds=interval,
         args=[job_id, interval, room_id, style, goods_info, choose_num],
+        next_run_time=datetime.now()
     )
 
     scheduler.start()
 
-    return {"message": "定时任务已启动", "job_id": job.id, "pg_job_id": job_id}, 200
-
+    # 立即返回,不等待任务完成
+    return {
+        "message": "定时任务已启动",
+        "job_id": job.id,
+        "pg_job_id": job_id
+    }, 200
 
 @app.route("/stop_periodic_task", methods=["POST"])
 async def stop_periodic_task():
@@ -644,10 +665,16 @@ async def get_queue_data():
             "video_url": data_dict['video_url'],
             "choose_comment": data_dict['choose_comment'],
             "answer": data_dict['answer'], 
-                }, 200
+            "status": "success"
+        }, 200
     else:
-        return {"error": "队列中没有数据"}, 404
-    
+        # 改为返回200状态码，但在响应中指明没有数据
+        return {
+            "status": "empty",
+            "message": "队列中暂无数据",
+            "job_id": job_id
+        }, 200
+
 
 if __name__ == "__main__":
     # 确保输出目录存在
@@ -655,7 +682,7 @@ if __name__ == "__main__":
 
     # dummy_workers()
     try:
-        app.run(host="0.0.0.0", port=5007, debug=False, use_reloader=False)
+        app.run(host="0.0.0.0", port=5008, debug=False, use_reloader=False)
     finally:
         clean_up()
         print("tts服务器已关闭")

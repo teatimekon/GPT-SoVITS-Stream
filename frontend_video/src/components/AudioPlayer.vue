@@ -6,7 +6,7 @@
     <div v-else>
       <video 
         ref="audioRef"
-        :src="currentAudio?.url"
+        :src="currentAudioRef?.url"
         @ended="handleEnded"
         @pause="handlePause"
         @play="handlePlay"
@@ -33,7 +33,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted, triggerRef, nextTick } from 'vue'
 
 const props = defineProps({
   playlist: {
@@ -51,7 +51,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['play', 'pause', 'ended', 'chunkStart', 'chunkEnd', 'update:modelValue'])
+const emit = defineEmits(['play', 'pause', 'ended', 'chunkStart', 'chunkEnd', 'update-playlist','update:modelValue'])
 
 // 播放器状态
 const audioRef = ref(null)
@@ -65,13 +65,24 @@ const duration = ref(0)
 const isPlaying = ref(false)
 const autoPlayNext = ref(true)
 const autoPlayEnabled = ref(true)
-
+const haveStreamPlayed = ref(false)
 // 计算当前播放的音频
-const currentAudio = computed(() => props.playlist[currentIndex.value]?.[currentKey.value] || null)
+const currentAudioRef = ref(null)
+watch(
+  [() => props.playlist, currentIndex, currentKey],
+  ([playlist, index, key]) => {
+    currentAudioRef.value = playlist[index]?.[key] || null
+  },
+  { immediate: true }
+)
 
 // 播放控制相关方法
 const playAudio = async () => {
-  if (!audioRef.value || !autoPlayEnabled.value) return
+  if (!audioRef.value || !autoPlayEnabled.value) {
+    console.log('意外退出！audioRef.value', audioRef.value)
+    console.log('意外退出！autoPlayEnabled.value', autoPlayEnabled.value)
+    return
+  }
   
   try {
     await audioRef.value.play()
@@ -86,36 +97,61 @@ const playAudio = async () => {
 
 const playNext = async () => {
   if (!autoPlayEnabled.value) return
-  let haveStreamPlayed = false
   console.log('shouldPlayNext', props.shouldPlayNext)
   while (!props.shouldPlayNext) {
     await new Promise(r => setTimeout(r, 100))
-    console.log('刚刚流式播放啦')
-    haveStreamPlayed = true
+    console.log('刚刚播放QA啦')
+    haveStreamPlayed.value = true
   }
-  if (!haveStreamPlayed) {
+  if (!haveStreamPlayed.value) {
     currentKey.value = 'content'
     currentIndex.value = (currentIndex.value + 1) % props.playlist.length
   }
   else {
     currentKey.value = 'continuity_sentences'
+    haveStreamPlayed.value = false
   }
   emit('chunkStart', {
     index: currentIndex.value,
-    audio: currentAudio.value
+    audio: currentAudioRef.value
   })
   await playAudio()
+}
+
+const playQA = async (url) => {
+  //构造下一个 playlist 的元素，并替换
+  const tempListValue = props.playlist[currentIndex.value]
+  const newValue = {
+    content: {'url': "http://183.131.7.9:5008/video/" + url},
+    continuity_sentences: {'url': "http://183.131.7.9:5008/video/" + url}
+  }
+  emit('update-playlist', currentIndex.value, newValue)
+  await nextTick()
+
+  await audioRef.value.load()
+  await audioRef.value.play()
+  await new Promise(resolve => {
+    audioRef.value.onended = resolve
+  })
+
+  console.log('QA播放完毕!')
+  emit('update-playlist', currentIndex.value, tempListValue)
 }
 
 // 事件处理器
 const handleEnded = async () => {
   isPlaying.value = false
+  if (haveStreamPlayed.value) {
+    console.log('刚刚播放了 QA，所以这个 chunk 结束不执行emit')
+    return
+  }
   emit('chunkEnd', {
     index: currentIndex.value,
-    audio: currentAudio.value
+    audio: currentAudioRef.value
   })
-  
+  console.log('音频播放完成')
   if (autoPlayNext.value && autoPlayEnabled.value) {
+    console.log('自动播放下一个')
     await playNext()
   }
 }
@@ -137,29 +173,31 @@ const updateTime = () => {
     duration.value = audioRef.value.duration
   }
 }
+watch(() => props.playlist, (newVal) => {
+  console.log('playlist 更新了:', newVal);
+});
+// // 监听播放列表变化
+// watch(() => props.playlist, (newPlaylist) => {
+//   if (newPlaylist.length > 0) {
+//     currentIndex.value = 0
+//     if (autoPlayNext.value) {
+//       audioRef.value?.load()
+//       playAudio()
+//     }
+//   }
+// }, { deep: true })
 
-// ��听播放列表变化
-watch(() => props.playlist, (newPlaylist) => {
-  if (newPlaylist.length > 0) {
-    currentIndex.value = 0
-    if (autoPlayNext.value) {
-      audioRef.value?.load()
-      playAudio()
-    }
-  }
-}, { deep: true })
-
-// 监听当前音频变化
-watch(() => currentAudio.value, () => {
-  if (audioRef.value) {
-    audioRef.value.load()
-    setTimeout(() => {
-      if (autoPlayNext.value) {
-        playAudio()
-      }
-    }, 500)
-  }
-})
+// // 监听当前音频变化
+// watch(() => currentAudio.value, () => {
+//   if (audioRef.value) {
+//     audioRef.value.load()
+//     setTimeout(() => {
+//       if (autoPlayNext.value) {
+//         playAudio()
+//       }
+//     }, 500)
+//   }
+// })
 
 // 生命周期钩子
 onMounted(() => {
@@ -170,7 +208,7 @@ onUnmounted(() => {
   audioRef.value?.removeEventListener('timeupdate', updateTime)
 })
 
-// 工具函数
+// 工具函���
 const formatTime = (time) => {
   if (!time) return '00:00'
   const minutes = Math.floor(time / 60)
@@ -213,7 +251,8 @@ defineExpose({
       
       audioRef.value.addEventListener('ended', onEnd)
     })
-  }
+  },
+  playQA
 })
 </script>
 

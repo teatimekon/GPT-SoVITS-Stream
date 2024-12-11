@@ -56,7 +56,7 @@ redis_config = {
 if __name__ == "__main__":
     redis_manager = RedisManager(redis_config)
 
-    queue_name = "video_url_a608f208-67f3-48b9-ac9c-b3073aa37c88"
+    queue_name = "video_url"
     # item1 = {"id": 1, "value": "item1"}
     # item2 = {"id": 2, "value": "item2"}
 

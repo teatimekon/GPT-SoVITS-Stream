@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE_URL = 'http://183.131.7.9:5006'
+const BASE_URL = 'http://183.131.7.9:5008'
 const Echominic_URL = 'http://183.131.7.9:5000'
 export const api = {
     async generateContent(formData) {
@@ -143,25 +143,47 @@ export const api = {
         return response
     },
 
-  async getTTS(text, requestId, rank) {
-    try {
-      console.log("send:",text, requestId, rank)
-      const response = await axios.post(`${BASE_URL}/tts_to_video`, {
-        text,
-        request_id: requestId,
-        rank
-      })
-      const videoPath = response.data.video_url
-      return {
-        url: `${BASE_URL}/video/${videoPath}`,
-        content: text
-      }
-    } catch (error) {
-      console.error('TTS请求失败:', error)
-      throw error
-    }
-  },
+    async getVideo(text, requestId, rank) {
+        try {
+        console.log("send:",text, requestId, rank)
+        const response = await axios.post(`${BASE_URL}/tts_to_video`, {
+            text,
+            request_id: requestId,
+            rank
+        })
+        const videoPath = response.data.video_url
+        return {
+            url: `${BASE_URL}/video/${videoPath}`,
+            content: text
+        }
+        } catch (error) {
+        console.error('TTS请求失败:', error)
+        throw error
+        }
+    },
 
+    // 获取评论视频
+    async getReadyCommentVideo(pgJobId){
+        try {
+            const response = await axios.post(`${BASE_URL}/get_ready_comment_video`, {
+                pg_job_id: pgJobId,
+            })
+            const commentVideoUrl = response.data.comment_video_url
+            if (commentVideoUrl) {
+                console.log("commentVideoUrl:", commentVideoUrl)
+                return {
+                    url: `${BASE_URL}/video/${commentVideoUrl}`,
+                    content: text
+                }
+            }
+            console.log("无准备就绪的视频")
+            return null
+        } catch (error) {
+            console.error('获取评论视频失败:', error)
+            throw error
+        }
+    },
+    
     async chatStream(question, requestId) {
         try {
             const response = await fetch(`${BASE_URL}/chat`, {
@@ -267,11 +289,12 @@ export const api = {
     
     async getResultById(formData) {
     
-        const response = await axios.post(`${BASE_URL}/get_result_by_id`, formData, {
+        const response = await axios.post(`${BASE_URL}/get_queue_data`, formData, {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded', 
             },
         });
+        console.log("response:", response.data)
         return response.data;
     }
 

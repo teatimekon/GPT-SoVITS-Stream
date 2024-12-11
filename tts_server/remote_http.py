@@ -122,3 +122,21 @@ class RemoteHTTP:
             return response.json().get("content")  
         else:
             raise Exception(f"请求失败: {response.status_code}, {response.text}")
+        
+        # audio转视频
+
+    async def audio_to_video(audio_path):
+        form_data = aiohttp.FormData()
+        form_data.add_field('uploaded_audio', audio_path)
+
+        
+        async with aiohttp.ClientSession() as session:
+            base_url = "http://183.131.7.9:5000/generate_video"
+            async with session.post(base_url, data=form_data) as response:
+                if response.status == 200:
+                    result = await response.json()
+                    
+                    print(f"视频生成成功，url: {result['video_url']}")
+                    return result
+                else:
+                    return {"error": "Failed to generate video"}

@@ -14,7 +14,7 @@
           <template #header>
             <div class="card-header">
               <span>生成的口播文本</span>
-              <el-button v-if="generatedContent && !audioChunks.length" type="primary" @click="generateAudio"
+              <el-button v-if="generatedContent && !audioChunks.length" type="primary" @click="generateVideo"
                 :loading="isLoading" class="generate-btn">
                 生成视频
               </el-button>
@@ -31,7 +31,7 @@
             <div v-if="audioChunks.length" class="audio-section">
               <audio-player ref="audioPlayerRef" :playlist="audioChunks" :loading="isLoading"
                 :should-play-next="shouldPlayNext" v-model="currentAudioIndex" @play="handlePlay" @pause="handlePause"
-                @chunkEnd="handleChunkEnd" @chunkStart="handleChunkStart" />
+                @chunkEnd="handleChunkEnd" @chunkStart="handleChunkStart" @update-playlist="updatePlaylist"/>
             </div>
           </div>
           <el-empty v-else description="暂无内容" />
@@ -179,11 +179,12 @@ const chooseComments = ref('');
 const comments = ref('');
 const goodsInfo = ref('女士拖鞋舒适鞋日常步行');
 const chooseNum = ref(1);
-const interval = ref(60);
-const fetchDataInterval = ref(60000); // 默认10秒
+const interval = ref(6);
+const fetchDataInterval = ref(4000); // 默认10秒
 const pgJobId = ref('');
 const roomId = ref('1752664819');
 const style = ref("1");
+const timeoutId = ref(null);
 let fetchLiveDataInterval = ref(null);
 
 
@@ -193,7 +194,7 @@ const handleContentGenerated = (content) => {
 }
 
 
-const generateAudio = async () => {
+const generateVideo = async () => {
   try {
     isLoading.value = true
     currentContentRequestId.value = uuidv4()
@@ -201,19 +202,19 @@ const generateAudio = async () => {
     // 获取音频结果
     const audioPromises = generatedContent.value.map(async chunk => {
       // 获取主要内容的音频
-      const contentAudio = await api.getTTS(
+      const contentAudio = await api.getVideo(
         chunk.content,
         currentContentRequestId.value + 'content',
         chunk.rank
       )
 
       // 获取连续性话语的音频
-      const continuityAudio = await api.getTTS(
+      const continuityAudio = await api.getVideo(
         chunk.continuity_sentences,
         currentContentRequestId.value + 'continuity',
         chunk.rank
       )
-
+      canStreamPlay.value = false
       return {
         content: contentAudio,
         continuity_sentences: continuityAudio,
@@ -240,15 +241,15 @@ const handlePause = () => {
   isPlaying.value = false
 }
 
-const handleStreamStart = () => {
+const handleQAStart = () => {
   if (audioPlayerRef.value) {
-    console.log('流式处理开始,handleStreamStart', audioPlayerRef.value)
+    console.log('开始回答弹幕问题', audioPlayerRef.value)
     shouldPlayNext.value = false
   }
 }
 
-const handleStreamEnd = () => {
-  console.log('流式处理结束,handleStreamEnd', audioPlayerRef.value)
+const handleQAEnd = () => {
+  console.log('回答弹幕问题结束,handleQAEnd', audioPlayerRef.value)
 
   canStreamPlay.value = false
   if (audioPlayerRef.value) {
@@ -277,36 +278,7 @@ const checkCanPlay = async () => {
     await new Promise(r => setTimeout(r, 100))
   }
 }
-const generateVideo = async () => {
-  try {
-    isLoading.value = true;
-    const formData = new FormData();
-    formData.append('uploaded_img', imageUrl.value);
-    formData.append('uploaded_audio', audioUrl.value);
-    formData.append('width', '512');
-    formData.append('height', '512');
-    formData.append('length', '1200');
-    formData.append('seed', '420');
-    formData.append('facemask_dilation_ratio', '0.1');
-    formData.append('facecrop_dilation_ratio', '0.5');
-    formData.append('context_frames', '12');
-    formData.append('context_overlap', '3');
-    formData.append('cfg', '2.5');
-    formData.append('steps', '30');
-    formData.append('sample_rate', '16000');
-    formData.append('fps', '24');
-    formData.append('device', 'cuda');
 
-    const videoResponse = await api.generateVideo(formData);
-    videoUrl.value = videoResponse.url;
-
-  } catch (error) {
-    console.error('生成视频失败:', error);
-    ElMessage.error('生成视频失败');
-  } finally {
-    isLoading.value = false;
-  }
-};
 // 处理图片上传成功
 const handleImageUploadSuccess = async (response) => {
   imageUrl.value = response.image_path
@@ -386,11 +358,36 @@ const handleAudioFileChange = (event) => {
     audioFile.value = file
   }
 }
+
+const updatePlaylist = (index,newValue) => {
+  console.log('调用了updatePlaylist', index,newValue)
+  audioChunks.value = [
+    ...audioChunks.value.slice(0, index),
+    newValue,
+    ...audioChunks.value.slice(index + 1)
+  ]
+}
+
 const fetchLiveData = async () => {
   try {
     const formData = new FormData();
     formData.append('job_id', pgJobId.value);
     const response = await api.getResultById(formData);
+    
+    if (response.status === "empty") {
+      ElMessage.info('队列中暂无数据');
+      return;
+    }
+
+    // 如果有新的回答音频
+    if (response.video_url) {
+       console.log('有新的回答音频')
+        handleQAStart()  //将 shouldPlayNext 设置为 false
+        await checkCanPlay()
+        console.log('现在能播放了 response.video_url', response.video_url)
+        await audioPlayerRef.value.playQA(response.video_url)
+        handleQAEnd()  //将 shouldPlayNext 设置为 true
+    }
 
     answers.value = response.answers;
     chooseComments.value = response.choose_comments;
@@ -400,40 +397,64 @@ const fetchLiveData = async () => {
   }
 };
 const startLive = async () => {
-  // isLoading.value = true;
   if (!goodsInfo.value || !chooseNum.value || !interval.value) {
     ElMessage.error('请填写所有配置项');
     return;
   }
+
   const formData = new FormData();
   formData.append('goods_info', goodsInfo.value);
   formData.append('choose_num', chooseNum.value);
   formData.append('interval', interval.value);
   formData.append('room_id', roomId.value)
   formData.append('style', style.value)
+  
   const response = await api.startPeriodicTask(formData);
-  console.log('startPeriodicTask response', response);
   jobId.value = response.job_id;
   pgJobId.value = response.pg_job_id;
   ElMessage.success('直播已开始');
 
-  // 清除之前的定时器
-  clearInterval(fetchLiveDataInterval.value);
+  // 清除可能存在的旧定时器
+  if (timeoutId.value) {
+    clearTimeout(timeoutId.value);
+  }
 
-  // 设置新的定时器
-  fetchLiveDataInterval.value = setInterval(fetchLiveData, fetchDataInterval.value);
+  // 定义并启动递归的轮询函数
+  const scheduleFetch = async () => {
+    try {
+      await fetchLiveData();
+      // 只有当 jobId 还存在(即直播未停止)时才继续轮询
+      if (jobId.value) {
+        timeoutId.value = setTimeout(scheduleFetch, fetchDataInterval.value);
+      }
+    } catch (error) {
+      console.error('轮询出错:', error);
+      // 出错时也继续轮询
+      if (jobId.value) {
+        timeoutId.value = setTimeout(scheduleFetch, fetchDataInterval.value);
+      }
+    }
+  };
+
+  // 启动轮询
+  scheduleFetch();
 };
 const stopLive = async () => {
-
-  // isLoading.value = false;
   if (!jobId.value) {
     ElMessage.error('没有正在运行的直播任务');
     return;
   }
+
   const formData = new FormData();
   formData.append('job_id', jobId.value);
   await api.stopPeriodicTask(formData);
-  clearInterval(fetchLiveDataInterval.value);
+
+  // 清除定时器
+  if (timeoutId.value) {
+    clearTimeout(timeoutId.value);
+    timeoutId.value = null;
+  }
+
   jobId.value = '';
   pgJobId.value = '';
   answers.value = '';
