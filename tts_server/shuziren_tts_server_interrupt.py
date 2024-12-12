@@ -520,9 +520,11 @@ async def periodic_task(job_id, interval, room_id, style, goods_info, choose_num
     tasks = []
     answers = []
     
-    async def process_comment(choose_comment):
+    async def process_comment(choose_comment,goods_info):
         # 获取answer
-        answer = remote_http.get_chat_completion(choose_comment)
+        combined_message = f"商品信息: {goods_info}\n问题: {choose_comment}\n要求：回答字数20字以内"
+        answer = remote_http.get_chat_completion(combined_message)
+        print(f"{Colors.OKGREEN}回答: {answer}{Colors.ENDC}")
         answers.append(answer)
         
         # 生成视频
@@ -545,7 +547,7 @@ async def periodic_task(job_id, interval, room_id, style, goods_info, choose_num
 
     # 为每个评论创建异步任务
     for choose_comment in choose_comments:
-        task = asyncio.create_task(process_comment(choose_comment))
+        task = asyncio.create_task(process_comment(choose_comment,goods_info))
         tasks.append(task)
     
     # 创建数据库更新任务,但不等待它完成
