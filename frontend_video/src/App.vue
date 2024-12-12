@@ -147,7 +147,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import { v4 as uuidv4 } from 'uuid'
 import { ElMessage } from 'element-plus'
 import GoodsForm from './components/GoodsForm.vue'
@@ -179,8 +179,8 @@ const chooseComments = ref('');
 const comments = ref('');
 const goodsInfo = ref('女士拖鞋舒适鞋日常步行');
 const chooseNum = ref(1);
-const interval = ref(6);
-const fetchDataInterval = ref(4000); // 默认10秒
+const interval = ref(10);
+const fetchDataInterval = ref(20000); // 默认10秒
 const pgJobId = ref('');
 const roomId = ref('1752664819');
 const style = ref("1");
@@ -380,7 +380,7 @@ const fetchLiveData = async () => {
     }
 
     // 如果有新的回答音频
-    if (response.video_url) {
+    if (response.video_url ) {
        console.log('有新的回答音频')
         handleQAStart()  //将 shouldPlayNext 设置为 false
         await checkCanPlay()
@@ -463,6 +463,25 @@ const stopLive = async () => {
   roomId.value = '1752664819';
   ElMessage.success('直播已停止');
 };
+
+// 添加 beforeunload 处理函数
+const handleBeforeUnload = async () => {
+  if (jobId.value) {
+    await stopLive()
+  }
+}
+
+// 添加生命周期钩子
+onMounted(() => {
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+  if (jobId.value) {
+    stopLive()
+  }
+})
 
 </script>
 

@@ -309,16 +309,16 @@ async def process_tts(text, request_id, rank=0):
 
 
 # audio转视频
-async def audio_to_video(audio_path):
+async def audio_to_video(audio_path,text):
     form_data = aiohttp.FormData()
     form_data.add_field("uploaded_audio", audio_path)
-
+    form_data.add_field("text", text)
     async with aiohttp.ClientSession() as session:
         base_url = "http://183.131.7.9:5000/generate_video"
-        async with session.post(base_url, data=form_data) as response:
+        timeout = aiohttp.ClientTimeout(total=None)  # 设置永不超时
+        async with session.post(base_url, data=form_data, timeout=timeout) as response:
             if response.status == 200:
                 result = await response.json()
-
                 print(f"视频生成成功，url: {result['video_url']}")
                 return result
             else:
@@ -328,17 +328,17 @@ async def audio_to_video(audio_path):
 # 弹幕转视频
 async def comment_to_video(comment, request_id):
     # 1. 文本转音频
-    # res = await process_tts(comment, request_id)
-
-    # # 本地音频绝对路径发给echomimic
-    # abs_audio_path = os.path.join(os.getcwd(), res.get("path"))
-    # # 2. 音频转视频
-    # res = await audio_to_video(abs_audio_path)
+    res = await process_tts(comment, request_id)
+    # res = "input_audio/hutao_v1.wav"
+    # 本地音频绝对路径发给echomimic
+    abs_audio_path = os.path.join(os.getcwd(), res.get("path"))
+    # 2. 音频转视频
+    res = await audio_to_video(abs_audio_path,comment)
     
     
     #test
-    await asyncio.sleep(2)
-    res = {"video_url": "output_video_with_audio_20241206114838.mp4" }
+    # await asyncio.sleep(2)
+    # res = {"video_url": "output_video_with_audio_20241206114838.mp4" }
     
     return res
 
@@ -363,8 +363,8 @@ async def tts_to_video():
     text = data.get("text")
     request_id = data.get("request_id")
 
-    # res = await comment_to_video(text, request_id)
-    res = {"video_url": "output_video_with_audio_20241210120605.mp4" }
+    res = await comment_to_video(text, request_id)
+    # res = {"video_url": "output_video_with_audio_20241210120605.mp4" }
     return res
 
 
@@ -512,18 +512,17 @@ async def periodic_task(job_id, interval, room_id, style, goods_info, choose_num
     
     # 获取弹幕和选择评论
     comments = remote_http.get_comment_from_bilibili(room_id, interval)
-    comments.append("这双鞋多少钱")
-    # choose_comments = remote_http.choose_comment(goods_info, comments, choose_num)
-    choose_comments = ["111", "222", "333"]
-    
+    # comments.append("这双鞋多少钱")
+    print(f"{Colors.OKGREEN}获取弹幕{comments}{Colors.ENDC}")
+    choose_comments = remote_http.choose_comment(goods_info, comments, choose_num)
+    # choose_comments = ["111", "222", "333"]
     # 用于跟踪所有任务的完成状态
     tasks = []
     answers = []
     
     async def process_comment(choose_comment):
         # 获取answer
-        # answer = remote_http.get_chat_completion(choose_comment)
-        answer = "111"
+        answer = remote_http.get_chat_completion(choose_comment)
         answers.append(answer)
         
         # 生成视频
@@ -680,7 +679,7 @@ if __name__ == "__main__":
     # 确保输出目录存在
     os.makedirs("stream_output_wav", exist_ok=True)
 
-    # dummy_workers()
+    dummy_workers()
     try:
         app.run(host="0.0.0.0", port=5008, debug=False, use_reloader=False)
     finally:

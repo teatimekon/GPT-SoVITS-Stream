@@ -85,6 +85,7 @@ const playAudio = async () => {
   }
   
   try {
+    await audioRef.value.load()
     await audioRef.value.play()
   } catch (error) {
     if (error.name === 'AbortError') {
@@ -108,7 +109,13 @@ const playNext = async () => {
     currentIndex.value = (currentIndex.value + 1) % props.playlist.length
   }
   else {
-    currentKey.value = 'continuity_sentences'
+    //如果是最后一个，则切换到 content，从头开始
+    if (currentIndex.value == props.playlist.length - 1) {
+      currentKey.value = 'content'
+      currentIndex.value = 0
+    } else {
+      currentKey.value = 'continuity_sentences'
+    }
     haveStreamPlayed.value = false
   }
   emit('chunkStart', {
