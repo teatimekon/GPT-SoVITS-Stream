@@ -1,6 +1,6 @@
 import axios from 'axios'
 
-const BASE_URL = 'http://183.131.7.9:5008'
+const BASE_URL = 'http://183.131.7.9:5011'
 const Echominic_URL = 'http://183.131.7.9:5000'
 export const api = {
     async generateContent(formData) {
@@ -117,7 +117,7 @@ export const api = {
         try {
         console.log("send:",text, requestId, rank)
         const response = await axios.post(`${BASE_URL}/tts_to_video`, {
-            text,
+            text,   
             request_id: requestId,
             rank
         })

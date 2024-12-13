@@ -75,13 +75,13 @@
           </div>
         </el-radio-group>
       </el-form-item>
-      <el-form-item label="SSML">
+      <!-- <el-form-item label="SSML">
         <el-switch 
           v-model="form.is_ssml_open" 
           active-text="开"
           inactive-text="关"
         />
-      </el-form-item>
+      </el-form-item> -->
       <el-form-item class="submit-item">
         <el-button 
           type="primary" 
@@ -97,11 +97,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { api } from '../services/api'
 
 const emit = defineEmits(['content-generated'])
+
 
 const loading = ref(false)
 const styleOptions = [
@@ -119,6 +120,21 @@ const form = ref({
   style: 1,
   is_ssml_open: false,
 })
+
+const goodsInfo = ref({
+  '商品名称': form.value.goods_name,
+  '商品卖点': form.value.goods_point,
+  '活动信息': form.value.activity,
+  '优惠信息': form.value.benefit,
+  '目标人群': form.value.target_people,
+  '用户痛点': form.value.user_point,
+})
+onMounted(() => {
+  emit('goods-info', goodsInfo.value)
+})
+watch(goodsInfo, (newValue) => {
+  emit('goods-info', newValue)
+}, { deep: true })  // 使用deep选项以监听嵌套属性的变化
 
 const generateContent = async () => {
   if (!form.value.goods_name) {

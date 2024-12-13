@@ -129,8 +129,8 @@ const playQA = async (url) => {
   //构造下一个 playlist 的元素，并替换
   const tempListValue = props.playlist[currentIndex.value]
   const newValue = {
-    content: {'url': "http://183.131.7.9:5008/video/" + url},
-    continuity_sentences: {'url': "http://183.131.7.9:5008/video/" + url}
+    content: {'url': "http://183.131.7.9:5011/video/" + url},
+    continuity_sentences: {'url': "http://183.131.7.9:5011/video/" + url}
   }
   emit('update-playlist', currentIndex.value, newValue)
   await nextTick()

@@ -6,7 +6,7 @@
 
     <el-container class="main-container">
       <el-aside width="500px" class="fixed-aside">
-        <goods-form @content-generated="handleContentGenerated" />
+        <goods-form @content-generated="handleContentGenerated" @goods-info="handleGoodsInfo" />
       </el-aside>
 
       <el-main class="fixed-main">
@@ -43,11 +43,11 @@
         <el-card class="stream-card">
           <template #header>
             <div class="card-header">
-              <span>实时音频流</span>
+              <span>实时问答</span>
             </div>
           </template>
           <streaming-audio ref="streamingAudioRef" :continuity-sentences="audioChunksWithSentences"
-            :checkCanPlay="checkCanPlay" @stream-start="handleStreamStart" @stream-end="handleStreamEnd" />
+            :checkCanPlay="checkCanPlay" @stream-start="handleStreamStart" @stream-end="handleStreamEnd" :goods-info="goodsInfo" />
         </el-card>
       </el-main>
     </el-container>
@@ -77,14 +77,17 @@ const streamingAudioRef = ref(null)
 const shouldPlayNext = ref(true)
 const canStreamPlay = ref(true)
 const currentAudioIndex = ref(0)
-
+const goodsInfo = ref('')
 
 
 const handleContentGenerated = (content) => {
   generatedContent.value = content.content
   audioChunks.value = []
 }
-
+const handleGoodsInfo = (info) => {
+  console.log('handleGoodsInfo', info)
+  goodsInfo.value = info
+}
 
 const generateAudio = async () => {
   try {
@@ -116,6 +119,7 @@ const generateAudio = async () => {
 
     const results = await Promise.all(audioPromises)
     audioChunks.value = results.sort((a, b) => a.rank - b.rank)
+    canStreamPlay.value = false
     console.log('audioChunks', audioChunks.value)
   } catch (error) {
     console.error('获取音频失败:', error)

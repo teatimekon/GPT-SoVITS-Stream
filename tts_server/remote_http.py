@@ -88,16 +88,21 @@ class RemoteHTTP:
             ],
             "stream": False,
         }
-        response = requests.post(base_url, headers=headers, json=data)
-        if response.status_code == 200:
-            response_data = response.json()
-            return (
-                response_data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-            )
-        else:
-            raise Exception(f"请求失败: {response.status_code}, {response.text}")
+        try:
+            response = requests.post(base_url, headers=headers, json=data, timeout=10)
+            print(f"response{response.text}")
+            if response.status_code == 200:
+                response_data = response.json()
+                return (
+                    response_data.get("choices", [{}])[0]
+                    .get("message", {})
+                    .get("content", "")
+                )
+            else:
+                raise Exception(f"请求失败: {response.status_code}, {response.text}")
+        except requests.exceptions.Timeout:
+            print("请求超时")
+            return "抱歉请求超时，我无法回答您的问题"
         
     def beauty_comment(self, question, answer, style):
         url = "http://183.131.7.9:8083/api/application/68b32f0e-64e2-11ef-977b-26cf8447a8c9/beauty_comment"

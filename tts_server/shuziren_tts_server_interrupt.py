@@ -15,6 +15,8 @@ from time import time
 import json
 import base64
 from datetime import datetime
+import hashlib
+
 # 第三方库导入
 import numpy as np
 import psutil
@@ -60,7 +62,7 @@ def init_worker():
     global tts
     config = TTS_Config("GPT_SoVITS/configs/tts_infer.yaml")
     if torch.cuda.is_available():
-        config.device = "cuda:2"
+        config.device = "cuda:3"
     else:
         config.device = "cpu"
     tts = TTS(config)
@@ -201,7 +203,16 @@ async def chat():
     data = await request.get_json()
     question = data.get("question")
     request_id = data.get("request_id")
+    goods_info = data.get("goods_info")
+    goods_message = "\n\n 下面是你需要知道的额外信息：\n—————————————————\n 本次活动的商品信息:\n"
+    for key, value in goods_info.items():
+        goods_message += f"{key}: {value}\n"
     # llm_stream = get_llm_stream(question,"1")
+    goods_message = goods_message + "\n—————————————————\n\n"
+    question = goods_message + question
+
+
+    print(f"{Colors.OKGREEN}问题{question}{Colors.ENDC}")
     llm_stream = get_maxkb_stream(question=question)
     index = 1
     audio_manager = AudioStreamManager()
@@ -282,7 +293,8 @@ async def chat():
 
 # 单条文本转语音
 async def process_tts(text, request_id, rank=0):
-    index = request_id + "_" + str(rank)
+    text_hash = hashlib.md5(text.encode()).hexdigest()  
+    index = text_hash
     task_control[request_id] = False  # 任务开始，打断设置为 false
 
     loop = asyncio.get_event_loop()
@@ -311,10 +323,12 @@ async def process_tts(text, request_id, rank=0):
 # audio转视频
 async def audio_to_video(audio_path,text):
     form_data = aiohttp.FormData()
-    form_data.add_field("uploaded_audio", audio_path)
+    form_data.add_field("audio_path", audio_path)
+    form_data.add_field("video_path", "/disk6/dly/MuseTalk/results/input/default_video.mp4")
+    form_data.add_field("bbox_shift", "0")
     form_data.add_field("text", text)
     async with aiohttp.ClientSession() as session:
-        base_url = "http://183.131.7.9:5000/generate_video"
+        base_url = "http://183.131.7.9:5002/generate_video"
         timeout = aiohttp.ClientTimeout(total=None)  # 设置永不超时
         async with session.post(base_url, data=form_data, timeout=timeout) as response:
             if response.status == 200:
@@ -328,13 +342,17 @@ async def audio_to_video(audio_path,text):
 # 弹幕转视频
 async def comment_to_video(comment, request_id):
     # 1. 文本转音频
-    res = await process_tts(comment, request_id)
+    text_hash = hashlib.md5(comment.encode()).hexdigest()
+    execpt_out_put_path = f"stream_output_wav/output_{text_hash}.wav"
+    if os.path.exists(execpt_out_put_path):
+        res = {"path": execpt_out_put_path}
+    else:
+        res = await process_tts(comment, request_id)
     # res = "input_audio/hutao_v1.wav"
     # 本地音频绝对路径发给echomimic
     abs_audio_path = os.path.join(os.getcwd(), res.get("path"))
     # 2. 音频转视频
     res = await audio_to_video(abs_audio_path,comment)
-    
     
     #test
     # await asyncio.sleep(2)
@@ -351,6 +369,10 @@ async def tts():
     request_id = data.get("request_id")
     rank = data.get("rank")
 
+    text_hash = hashlib.md5(text.encode()).hexdigest()
+    execpt_out_put_path = f"stream_output_wav/output_{text_hash}.wav"
+    if os.path.exists(execpt_out_put_path):
+        return {"path": execpt_out_put_path}
     res = await process_tts(text, request_id, rank)
 
     return res
@@ -362,7 +384,9 @@ async def tts_to_video():
     data = await request.get_json()
     text = data.get("text")
     request_id = data.get("request_id")
-
+    
+    if text == "":
+        return {"error": "text is empty"}
     res = await comment_to_video(text, request_id)
     # res = {"video_url": "output_video_with_audio_20241210120605.mp4" }
     return res
@@ -418,7 +442,7 @@ async def kill():
 @app.route("/video/<path:filename>")
 async def serve_video(filename):
     # video的路径文件夹在/disk6/dly/bobby_echomimic/output/tmp下
-    video_abs_folder = "/disk6/dly/bobby_echomimic/output/tmp/"
+    video_abs_folder = "/disk6/dly/MuseTalk/results/output/"
     video_abs_path = os.path.join(video_abs_folder, filename)
     return await send_file(video_abs_path, mimetype="video/mp4")
 
@@ -452,7 +476,7 @@ def clean_up():
     print("清理资源...")
 
     # 清理音频文件
-    cleanup_audio_files()
+    # cleanup_audio_files()
 
     # 原有的清理代码...
     if "executor" in globals():
@@ -514,12 +538,14 @@ async def periodic_task(job_id, interval, room_id, style, goods_info, choose_num
     comments = remote_http.get_comment_from_bilibili(room_id, interval)
     # comments.append("这双鞋多少钱")
     print(f"{Colors.OKGREEN}获取弹幕{comments}{Colors.ENDC}")
+    if not comments:
+        return {"error": "comments is empty"}
     choose_comments = remote_http.choose_comment(goods_info, comments, choose_num)
     # choose_comments = ["111", "222", "333"]
     # 用于跟踪所有任务的完成状态
     tasks = []
     answers = []
-    
+    print(f"{Colors.OKGREEN}choose_comments{choose_comments}{Colors.ENDC}")
     async def process_comment(choose_comment,goods_info):
         # 获取answer
         combined_message = f"商品信息: {goods_info}\n问题: {choose_comment}\n要求：回答字数20字以内"
@@ -530,7 +556,8 @@ async def periodic_task(job_id, interval, room_id, style, goods_info, choose_num
         # 生成视频
         request_id = str(uuid.uuid4())
         video_url = await comment_to_video(answer, request_id)
-        
+        if video_url.get("error"):
+            return {"error": "video_url is empty"}
         # 存入Redis
         redisManager = RedisManager(redis_config)
         queue_name = f"video_url_{job_id}"
@@ -589,8 +616,6 @@ async def start_periodic_task():
         next_run_time=datetime.now()
     )
 
-    scheduler.start()
-
     # 立即返回,不等待任务完成
     return {
         "message": "定时任务已启动",
@@ -612,7 +637,6 @@ async def stop_periodic_task():
     job = scheduler.get_job(job_id)
     if job:
         job.remove()
-        scheduler.shutdown()
         return {"message": "定时任务已停止"}, 200
     else:
         return {"error": "未找到指定的任务ID"}, 500
@@ -677,13 +701,23 @@ async def get_queue_data():
         }, 200
 
 
+@app.before_serving
+async def startup():
+    # 在app启动服务前启动scheduler
+    scheduler.start()
+
+@app.after_serving
+async def shutdown():
+    # 在app停止服务时关闭scheduler
+    scheduler.shutdown()
+
 if __name__ == "__main__":
     # 确保输出目录存在
     os.makedirs("stream_output_wav", exist_ok=True)
 
     dummy_workers()
     try:
-        app.run(host="0.0.0.0", port=5008, debug=False, use_reloader=False)
+        app.run(host="0.0.0.0", port=5011, debug=False, use_reloader=False)
     finally:
         clean_up()
         print("tts服务器已关闭")

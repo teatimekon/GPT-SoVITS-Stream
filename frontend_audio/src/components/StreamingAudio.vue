@@ -99,6 +99,10 @@ const props = defineProps({
   continuitySentences: {
     type: Array,
     default: () => []
+  },
+  goodsInfo: {
+    type: Object,
+    default: () => {}
   }
 })
 
@@ -125,15 +129,20 @@ const handlePlay = async () => {
   isLoading.value = true
   try {
     // 拼接历史对话和当前问题
-    let fullQuestion = ''
+    let fullQuestion = '之前用户的问题与你的回答如下所示：\n=============================\n'
+    emit('streamStart') 
     if (dialogHistory.value.length > 0) {
       // 添加历史对话
       dialogHistory.value.forEach(dialog => {
-        fullQuestion += `这是历史记录：用户问：${dialog.question}\n AI回答：${dialog.answer.map(chunk => chunk.text).join('')}\n\n`
+        const answer = dialog.answer.map(chunk => chunk.text).join('')
+        if (answer) {
+          fullQuestion += `用户问：${dialog.question}\n AI回答：${answer}\n`
+          fullQuestion += `=============================\n`
+        }
       })
     }
     // 添加当前问题
-    fullQuestion += `这是当前问题：${question.value}`
+    fullQuestion += ` \n最后，请你回答用户的问题：${question.value}`
     console.log('Full question:', fullQuestion)
     // 创建新的对话记录
     const newDialog = {
@@ -238,7 +247,8 @@ const startStream = async (text) => {
     // 不再重置文本chunks，而是添加到当前对话
     currentChunkIndex.value = null
     
-    const response = await api.chatStream(text, requestId.value)
+    console.log('props.goodsInfo', props.goodsInfo)
+    const response = await api.chatStream(text, requestId.value, props.goodsInfo)
     const reader = response.body.getReader()
     const decoder = new TextDecoder()
     let buffer = ''
@@ -257,9 +267,9 @@ const startStream = async (text) => {
       // 按换行符分割并处理完整的JSON
       const lines = buffer.split('\n')
       buffer = lines.pop() // 保留最后一个不完整的行
-      
+      await props.checkCanPlay()
+
       for (const line of lines) {
-        console.log(line)
         if (!line.trim()) continue
         
         try {
@@ -300,7 +310,7 @@ const startStream = async (text) => {
           console.log('Decoded audio data size:', audioData.length)
           
           // 播放音频
-          await props.checkCanPlay()
+          
           await playAudioChunk(audioData)
           
           if (isFirstChunk) {
