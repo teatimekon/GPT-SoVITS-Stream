@@ -39,7 +39,7 @@ scheduler = AsyncIOScheduler()
 app = cors(app, allow_origin="*")
 max_workers = 4
 future_map = defaultdict(set)
-task_control = Manager().dict()
+task_control = Manager().dict() # key 是某个请求的 id， value是 t f
 
 db_config = {
     "dbname": "maxkb",
@@ -106,11 +106,14 @@ class AudioStreamManager:
         self.next_index = 1  # 下一个要发送的音频索引
         self.is_completed = False
 
+    # 回调
     def add_audio(self, index, audio_data, sr, text):
         self.audio_buffer[index] = (audio_data, sr, text)
 
     async def get_next_audio(self):
         """获取下一个音频数据"""
+        " index 7能返回，说明 往前的 6 --1 一定是返回的"
+        
         if self.next_index in self.audio_buffer:
             audio_data, sr, text = self.audio_buffer[self.next_index]
             self.next_index += 1
@@ -259,7 +262,16 @@ async def chat():
         index += 1
 
     stream_completed = True
-
+    
+    # 每一条推理时间是不固定的
+    # 队列
+    # 1 2 3 4 5 6 7 8 9 10
+    
+    # 3 2 1
+    # 任务队列
+    # 1 2 3
+    # queue 对象
+    
     # 生成音频数据流
     async def generate():
         while True:
